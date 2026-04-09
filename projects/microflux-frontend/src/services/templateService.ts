@@ -392,6 +392,6 @@ export function getTemplateById(id: string): WorkflowTemplate | undefined {
 export const CATEGORIES: { id: TemplateCategory; label: string; icon: string }[] = [
   { id: 'payments', label: 'Payments', icon: '💸' },
   { id: 'treasury', label: 'Treasury', icon: '🏦' },
-  { id: 'trading', label: 'Trading', icon: '📈' },
-  { id: 'automation', label: 'Automation', icon: '⚡' },
+  { id: 'trading', label: 'Trading', icon: '' },
+  { id: 'automation', label: 'Automation', icon: '' },
 ];

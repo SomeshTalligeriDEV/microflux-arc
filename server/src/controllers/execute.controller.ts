@@ -8,7 +8,7 @@ export const runWorkflow = async (req: Request, res: Response) => {
     const { nodes, edges } = req.body;
     let context: any = {}; // Stores data between blocks (e.g., current price)
 
-    console.log("🏁 Executing Workflow...");
+    console.log("[START] Executing Workflow...");
 
     // 1. Sort nodes by X-position for linear execution (Node 1 -> 2 -> 3)
     const sortedNodes = nodes.sort(
@@ -16,13 +16,13 @@ export const runWorkflow = async (req: Request, res: Response) => {
     );
 
     for (const node of sortedNodes) {
-      console.log(`📡 Processing: ${node.type}`);
+      console.log(`[PROCESS] Processing: ${node.type}`);
 
       switch (node.type) {
         case "PriceMonitorNode":
           context.currentPrice = await getAssetPrice(node.data.asset || "ALGO");
           console.log(
-            `💰 Current ${node.data.asset} Price: $${context.currentPrice}`,
+            `[PRICE] Current ${node.data.asset} Price: $${context.currentPrice}`,
           );
           break;
 
@@ -33,29 +33,29 @@ export const runWorkflow = async (req: Request, res: Response) => {
           );
 
           if (!isMet) {
-            console.log("🛑 Condition not met. Stopping workflow.");
+            console.log("[STOP] Condition not met. Stopping workflow.");
             return res
               .status(200)
               .json({ status: "stopped", reason: "Condition false" });
           }
-          console.log("✅ Condition met. Proceeding...");
+          console.log("[OK] Condition met. Proceeding...");
           break;
 
         case "SwapTokenNode":
           console.log(
-            `🔀 Preparing Swap: ${node.data.amount} ${node.data.fromAsset}`,
+            `[SWAP] Preparing Swap: ${node.data.amount} ${node.data.fromAsset}`,
           );
           // This is where your Web3 teammate will plug in the Folks Router logic
           break;
 
         case "SendTelegramNode":
-          console.log(`🤖 Alert Triggered: ${node.data.messageTemplate}`);
+          console.log(`[ALERT] Alert Triggered: ${node.data.messageTemplate}`);
           // Last step: implementation of Telegram bot call
           break;
 
         case "SwapTokenNode":
           console.log(
-            `🔀 Preparing Swap: ${node.data.amount} ${node.data.fromAsset}`,
+            `[SWAP] Preparing Swap: ${node.data.amount} ${node.data.fromAsset}`,
           );
 
           // We need the user's wallet address from the request to prepare the TX
@@ -70,7 +70,7 @@ export const runWorkflow = async (req: Request, res: Response) => {
 
           // Store the prepared transaction in context to send back to the frontend
           context.preparedTransaction = swapData;
-          console.log("💎 Swap transaction prepared for Pera Wallet signing.");
+          console.log("[DONE] Swap transaction prepared for Pera Wallet signing.");
           break;
 
         case "SendTelegramNode":
@@ -83,7 +83,7 @@ export const runWorkflow = async (req: Request, res: Response) => {
             context.currentPrice?.toString() || "",
           );
 
-          console.log(`🤖 Sending Telegram: ${finalMessage}`);
+          console.log(`[ALERT] Sending Telegram: ${finalMessage}`);
           await sendTelegramAlert(finalMessage);
           break;
       }

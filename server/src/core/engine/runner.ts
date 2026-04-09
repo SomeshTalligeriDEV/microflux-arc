@@ -4,7 +4,7 @@ export const executeWorkflow = async (workflow: any) => {
   const { nodes, edges } = workflow;
 
   const sortedNodes = nodes.sort((a: any, b: any) => a.position.x - b.position.x);
-  console.log("🚀 Starting Workflow Execution...");
+  console.log("[EXEC] Starting Workflow Execution...");
 
   for (const node of sortedNodes) {
     console.log(`Executing: ${node.type}...`);

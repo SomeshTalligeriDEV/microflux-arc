@@ -33,7 +33,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
           padding: '2rem',
         }}>
           <div className="card" style={{ maxWidth: '500px', textAlign: 'center' }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: '16px' }}>⚠️</div>
+            <div style={{ fontSize: '2.5rem', marginBottom: '16px' }}>Error:</div>
             <h1 className="text-2xl" style={{ marginBottom: '12px' }}>ERROR OCCURRED</h1>
             <p className="text-sm text-muted" style={{ lineHeight: '1.6' }}>
               {this.state.error?.message.includes('Attempt to get default algod configuration')

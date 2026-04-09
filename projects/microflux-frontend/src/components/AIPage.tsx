@@ -43,7 +43,7 @@ const AIPage: React.FC<AIPageProps> = ({ onLoadWorkflow, groqApiKey, onApiKeyCha
         <div>
           <div className="card" style={{ marginBottom: '16px' }}>
             <h3 className="text-lg" style={{ marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              🎯 How It Works
+              How It Works
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {[
@@ -85,7 +85,7 @@ const AIPage: React.FC<AIPageProps> = ({ onLoadWorkflow, groqApiKey, onApiKeyCha
             background: 'rgba(245, 158, 11, 0.05)',
           }}>
             <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: '1.2rem' }}>⚠️</span>
+              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--color-warning)' }}>NOTE</span>
               <div>
                 <div className="text-sm font-bold" style={{ color: 'var(--color-warning)', marginBottom: '4px' }}>
                   Safety Notice

@@ -207,7 +207,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onUseTemplate, onNavigateToBu
 
       {filteredTemplates.length === 0 && (
         <div className="empty-state">
-          <div className="empty-state-icon">📦</div>
+          <div className="empty-state-icon">—</div>
           <div className="empty-state-title">No Templates Found</div>
           <div className="empty-state-desc">Try adjusting your search or filters</div>
         </div>

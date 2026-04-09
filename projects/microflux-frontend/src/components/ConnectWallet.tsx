@@ -156,7 +156,7 @@ const ConnectWallet = ({ openModal, closeModal, onBalanceUpdate }: ConnectWallet
             fontSize: 'var(--text-xs)',
             marginBottom: '16px',
           }}>
-            ⚠️ {error}
+            Note: {error}
           </div>
         )}
 
@@ -347,7 +347,7 @@ const ConnectWallet = ({ openModal, closeModal, onBalanceUpdate }: ConnectWallet
                         style={{ objectFit: 'contain', width: '24px', height: '24px' }}
                       />
                     ) : (
-                      <span style={{ fontSize: '18px' }}>🔧</span>
+                      <span style={{ fontSize: '14px', fontWeight: 700 }}>Settings</span>
                     )}
                   </div>
 
@@ -387,7 +387,7 @@ const ConnectWallet = ({ openModal, closeModal, onBalanceUpdate }: ConnectWallet
               gap: '8px',
               alignItems: 'flex-start',
             }}>
-              <span style={{ fontSize: '14px' }}>🔒</span>
+              <span style={{ fontSize: '12px', fontWeight: 600 }}>Security</span>
               <p className="text-xs text-muted" style={{ lineHeight: '1.5' }}>
                 <strong>Security:</strong> MICROFLUX-X1 never stores private keys.
                 All transaction signing happens through your wallet provider.

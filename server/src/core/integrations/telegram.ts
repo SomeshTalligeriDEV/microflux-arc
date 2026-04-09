@@ -17,7 +17,7 @@ export const sendTelegramAlert = async (message: string): Promise<boolean> => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: `🚀 *MicroFlux Execution* \n\n${message}`,
+        text: `[MFX] *MicroFlux Execution* \n\n${message}`,
         parse_mode: 'Markdown'
       })
     });

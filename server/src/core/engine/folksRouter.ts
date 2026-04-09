@@ -22,7 +22,7 @@ export const executeSwap = async (
     const fromAssetId = assetMap[fromAsset.toUpperCase()];
     const toAssetId = assetMap[toAsset.toUpperCase()];
 
-    console.log(`🔍 Fetching quote: ${amount} ${fromAsset} -> ${toAsset}...`);
+    console.log(`[QUOTE] Fetching quote: ${amount} ${fromAsset} -> ${toAsset}...`);
 
     // 2. Get Swap Quote from Folks Router 
     const quoteResponse = await fetch(
@@ -34,7 +34,7 @@ export const executeSwap = async (
 
     // 3. Construct the Transaction [cite: 31, 48]
     // Note: On the backend, we prepare the transaction for the user to sign via Pera Wallet [cite: 105]
-    console.log(`✅ Quote received. Best path found via Folks Router.`);
+    console.log(`[OK] Quote received. Best path found via Folks Router.`);
     
     // In a hackathon context, the backend usually returns the transaction 
     // bytes for the frontend to sign with the user's wallet.

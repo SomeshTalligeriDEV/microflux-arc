@@ -112,7 +112,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           category: n.category as NodeCategory,
           config: n.config,
           position: n.position,
-          icon: def?.icon ?? '📦',
+          icon: def?.icon ?? '▪',
           color: def?.color ?? '#666',
           isReal: def?.isReal ?? false,
         };
@@ -216,46 +216,46 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           const amt = (node.config.amount as number) / 1000000;
           try {
             const quote = await algoToUsd(amt);
-            logs.push(`✅ ${node.label}: Send ${amt} ALGO (~${quote.formatted})`);
+            logs.push(`${node.label}: Send ${amt} ALGO (~${quote.formatted})`);
             setUsdQuote(`${amt} ALGO ≈ ${quote.formatted}`);
           } catch {
-            logs.push(`✅ ${node.label}: Send ${amt} ALGO`);
+            logs.push(`${node.label}: Send ${amt} ALGO`);
           }
           break;
         }
         case 'asa_transfer':
-          logs.push(`✅ ${node.label}: Transfer ASA #${node.config.asset_id}`);
+          logs.push(`${node.label}: Transfer ASA #${node.config.asset_id}`);
           break;
         case 'filter':
-          logs.push(`🔀 ${node.label}: Condition evaluated → true`);
+          logs.push(`[FILTER] ${node.label}: Condition evaluated → true`);
           break;
         case 'delay':
-          logs.push(`⏳ ${node.label}: Waiting ${(node.config.duration as number) / 1000}s...`);
+          logs.push(`[WAIT] ${node.label}: Waiting ${(node.config.duration as number) / 1000}s...`);
           break;
         case 'debug_log':
-          logs.push(`🐛 ${node.label}: ${node.config.message}`);
+          logs.push(`[LOG] ${node.label}: ${node.config.message}`);
           break;
         case 'timer_loop':
-          logs.push(`⏱ ${node.label}: Timer triggered`);
+          logs.push(`[TIMER] ${node.label}: Timer triggered`);
           break;
         case 'wallet_event':
-          logs.push(`👛 ${node.label}: Wallet event received`);
+          logs.push(`[WALLET] ${node.label}: Wallet event received`);
           break;
         case 'webhook_trigger':
-          logs.push(`🔗 ${node.label}: Webhook received`);
+          logs.push(`${node.label}: Webhook received`);
           break;
         case 'get_quote':
         case 'price_feed':
-          logs.push(`💹 ${node.label}: ALGO = $0.24 (cached)`);
+          logs.push(`[PRICE] ${node.label}: ALGO = $0.24 (cached)`);
           break;
         case 'app_call':
-          logs.push(`📝 ${node.label}: App call prepared`);
+          logs.push(`[APP] ${node.label}: App call prepared`);
           break;
         case 'http_request':
-          logs.push(`🌐 ${node.label}: HTTP request (mock)`);
+          logs.push(`[HTTP] ${node.label}: HTTP request (mock)`);
           break;
         case 'browser_notification':
-          logs.push(`🔔 ${node.label}: Notification sent`);
+          logs.push(`[NOTIFY] ${node.label}: Notification sent`);
           if (Notification.permission === 'granted') {
             new Notification(node.config.title as string, { body: node.config.body as string });
           } else if (Notification.permission !== 'denied') {
@@ -263,13 +263,13 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           }
           break;
         case 'telegram_notify':
-          logs.push(`✈️ ${node.label}: Telegram (mock)`);
+          logs.push(`[TELEGRAM] ${node.label}: Telegram (mock)`);
           break;
         case 'discord_notify':
-          logs.push(`🎮 ${node.label}: Discord (mock)`);
+          logs.push(`[DISCORD] ${node.label}: Discord (mock)`);
           break;
         default:
-          logs.push(`📦 ${node.label}: Processed`);
+          logs.push(`[NODE] ${node.label}: Processed`);
       }
 
       setSimResults([...logs]);
@@ -295,12 +295,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         const receiver = String(node.config.receiver || '');
 
         if (!receiver || receiver === 'ALGO_ADDRESS_PLACEHOLDER') {
-          logs.push(`⚠️ ${node.label}: Skipped — no receiver set`);
+          logs.push(`[SKIP] ${node.label}: Skipped — no receiver set`);
           setExecutionLog([...logs]);
           continue;
         }
 
-        logs.push(`🔄 ${node.label}: Requesting wallet signature...`);
+        logs.push(`${node.label}: Requesting wallet signature...`);
         setExecutionLog([...logs]);
 
         const result = await sendPayment(
@@ -314,14 +314,14 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           const algoAmt = amount / 1_000_000;
           try {
             const quote = await algoToUsd(algoAmt);
-            logs.push(`✅ ${node.label}: Sent ${algoAmt} ALGO (~${quote.formatted})`);
+            logs.push(`[OK] ${node.label}: Sent ${algoAmt} ALGO (~${quote.formatted})`);
           } catch {
-            logs.push(`✅ ${node.label}: Sent ${algoAmt} ALGO`);
+            logs.push(`[OK] ${node.label}: Sent ${algoAmt} ALGO`);
           }
           logs.push(`   TX: ${result.txId}`);
-          logs.push(`   🔗 ${getExplorerTxUrl(result.txId, networkName)}`);
+          logs.push(`   ${getExplorerTxUrl(result.txId, networkName)}`);
         } else {
-          logs.push(`❌ ${node.label}: ${result.error}`);
+          logs.push(`[FAIL] ${node.label}: ${result.error}`);
         }
         setExecutionLog([...logs]);
 
@@ -331,12 +331,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         const receiver = String(node.config.receiver || '');
 
         if (!receiver || !assetId) {
-          logs.push(`⚠️ ${node.label}: Skipped — missing config`);
+          logs.push(`[SKIP] ${node.label}: Skipped — missing config`);
           setExecutionLog([...logs]);
           continue;
         }
 
-        logs.push(`🔄 ${node.label}: Requesting wallet signature...`);
+        logs.push(`${node.label}: Requesting wallet signature...`);
         setExecutionLog([...logs]);
 
         const result = await sendAsaTransfer(
@@ -348,10 +348,10 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         );
 
         if (result.success) {
-          logs.push(`✅ ${node.label}: Transferred ${amount} of ASA #${assetId}`);
+          logs.push(`[OK] ${node.label}: Transferred ${amount} of ASA #${assetId}`);
           logs.push(`   TX: ${result.txId}`);
         } else {
-          logs.push(`❌ ${node.label}: ${result.error}`);
+          logs.push(`[FAIL] ${node.label}: ${result.error}`);
         }
         setExecutionLog([...logs]);
 
@@ -361,12 +361,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         const args = Array.isArray(node.config.args) ? node.config.args.map(String) : [];
 
         if (!appId || !method) {
-          logs.push(`⚠️ ${node.label}: Skipped — missing app_id or method`);
+          logs.push(`[SKIP] ${node.label}: Skipped — missing app_id or method`);
           setExecutionLog([...logs]);
           continue;
         }
 
-        logs.push(`🔄 ${node.label}: Calling App ${appId} → ${method}...`);
+        logs.push(`${node.label}: Calling App ${appId} → ${method}...`);
         setExecutionLog([...logs]);
 
         const result = await genericAppCall(
@@ -378,26 +378,26 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         );
 
         if (result.success) {
-          logs.push(`✅ ${node.label}: App call confirmed`);
+          logs.push(`[OK] ${node.label}: App call confirmed`);
           logs.push(`   TX: ${result.txId}`);
-          logs.push(`   📱 App: ${getAppExplorerUrl(appId, networkName)}`);
+          logs.push(`   App: ${getAppExplorerUrl(appId, networkName)}`);
         } else {
-          logs.push(`❌ ${node.label}: ${result.error}`);
+          logs.push(`[FAIL] ${node.label}: ${result.error}`);
         }
         setExecutionLog([...logs]);
 
       } else if (node.type === 'browser_notification' && node.isReal) {
         if (Notification.permission === 'granted') {
           new Notification(node.config.title as string, { body: node.config.body as string });
-          logs.push(`🔔 ${node.label}: Notification sent`);
+          logs.push(`[NOTIFY] ${node.label}: Notification sent`);
         } else if (Notification.permission !== 'denied') {
           await Notification.requestPermission();
-          logs.push(`🔔 ${node.label}: Permission requested`);
+          logs.push(`[NOTIFY] ${node.label}: Permission requested`);
         }
         setExecutionLog([...logs]);
 
       } else {
-        logs.push(`⏭ ${node.label}: Simulated (${node.isReal ? 'on-chain' : 'mock'})`);
+        logs.push(`[SKIP] ${node.label}: Simulated (${node.isReal ? 'on-chain' : 'mock'})`);
         setExecutionLog([...logs]);
       }
     }
@@ -409,7 +409,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
 
     const appId = getAppId();
     if (!appId) {
-      logs.push('❌ No App ID configured. Deploy contract first.');
+      logs.push('[FAIL] No App ID configured. Deploy contract first.');
       logs.push('   Set VITE_APP_ID=<app_id> in .env');
       setExecutionLog([...logs]);
       return;
@@ -419,9 +419,9 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     const workflowData = { nodes: nodes.map(n => ({ type: n.type, config: n.config })), timestamp: Date.now() };
     const wfHash = await hashWorkflow(workflowData);
 
-    logs.push(`📋 Workflow hash: ${wfHash.slice(0, 24)}...`);
-    logs.push(`📱 App ID: ${appId}`);
-    logs.push(`🔄 Calling execute() on WorkflowExecutor...`);
+    logs.push(`Workflow hash: ${wfHash.slice(0, 24)}...`);
+    logs.push(`App ID: ${appId}`);
+    logs.push(`Calling execute() on WorkflowExecutor...`);
     setExecutionLog([...logs]);
 
     const result = await callExecute(
@@ -432,12 +432,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     );
 
     if (result.success) {
-      logs.push(`✅ Contract execution confirmed!`);
+      logs.push(`Contract execution confirmed.`);
       logs.push(`   TX: ${result.txId}`);
-      logs.push(`   🔗 ${getExplorerTxUrl(result.txId, networkName)}`);
-      logs.push(`   📱 ${getAppExplorerUrl(appId, networkName)}`);
+      logs.push(`   ${getExplorerTxUrl(result.txId, networkName)}`);
+      logs.push(`   ${getAppExplorerUrl(appId, networkName)}`);
       logs.push('');
-      logs.push('🔒 This execution is now verifiable on-chain');
+      logs.push('This execution is now verifiable on-chain');
 
       // Refresh contract state
       const newState = await getContractState(appId);
@@ -446,7 +446,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         logs.push(`   Execution #${newState.totalExecutions}`);
       }
     } else {
-      logs.push(`❌ Contract call failed: ${result.error}`);
+      logs.push(`[FAIL] Contract call failed: ${result.error}`);
     }
     setExecutionLog([...logs]);
   }, [nodes, activeAddress, transactionSigner, networkName]);
@@ -481,11 +481,11 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     const appId = getAppId();
 
     const txnCount = payments.length + asaTransfers.length + (appId ? 1 : 0);
-    logs.push(`📦 Building atomic group: ${txnCount} transactions`);
-    if (payments.length) logs.push(`   💰 ${payments.length} payment(s)`);
-    if (asaTransfers.length) logs.push(`   🪙 ${asaTransfers.length} ASA transfer(s)`);
-    if (appId) logs.push(`   📱 1 app call (App ${appId})`);
-    logs.push(`🔄 Requesting wallet signature for entire group...`);
+    logs.push(`Building atomic group: ${txnCount} transactions`);
+    if (payments.length) logs.push(`   ${payments.length} payment(s)`);
+    if (asaTransfers.length) logs.push(`   ${asaTransfers.length} ASA transfer(s)`);
+    if (appId) logs.push(`   1 app call (App ${appId})`);
+    logs.push(`Requesting wallet signature for entire group...`);
     setExecutionLog([...logs]);
 
     const result = await executeAtomicGroup(
@@ -499,14 +499,14 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     );
 
     if (result.success) {
-      logs.push(`✅ Atomic group confirmed!`);
+      logs.push(`[OK] Atomic group confirmed.`);
       logs.push(`   TX: ${result.txId}`);
-      logs.push(`   🔗 ${getExplorerTxUrl(result.txId, networkName)}`);
-      if (appId) logs.push(`   📱 ${getAppExplorerUrl(appId, networkName)}`);
+      logs.push(`   ${getExplorerTxUrl(result.txId, networkName)}`);
+      if (appId) logs.push(`   ${getAppExplorerUrl(appId, networkName)}`);
       logs.push('');
-      logs.push(`🔒 All ${txnCount} transactions executed atomically`);
+      logs.push(`All ${txnCount} transactions executed atomically`);
     } else {
-      logs.push(`❌ Atomic execution failed: ${result.error}`);
+      logs.push(`[FAIL] Atomic execution failed: ${result.error}`);
     }
     setExecutionLog([...logs]);
   }, [nodes, activeAddress, transactionSigner, networkName]);
@@ -523,10 +523,10 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
 
     const modeLabel = executionMode === 'direct' ? 'DIRECT' : executionMode === 'contract' ? 'CONTRACT' : 'ATOMIC GROUP';
     const onChainCount = nodes.filter(n => n.isReal).length;
-    logs.push(`⚡ Starting ${modeLabel} execution...`);
-    logs.push(`📍 Sender: ${activeAddress.slice(0, 8)}...${activeAddress.slice(-6)}`);
-    logs.push(`🌐 Network: ${networkName} (Algorand Testnet)`);
-    logs.push(`🔧 Mode: ${modeLabel} • ${onChainCount} on-chain transactions`);
+    logs.push(`Starting ${modeLabel} execution...`);
+    logs.push(`Sender: ${activeAddress.slice(0, 8)}...${activeAddress.slice(-6)}`);
+    logs.push(`Network: ${networkName} (Algorand Testnet)`);
+    logs.push(`Mode: ${modeLabel} • ${onChainCount} on-chain transactions`);
     logs.push('');
     setExecutionLog([...logs]);
 
@@ -543,8 +543,8 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           break;
       }
 
-      // Check if any TX was confirmed (look for ✅ in logs)
-      const hasSuccess = logs.some(l => l.includes('✅'));
+      // Check if any TX was confirmed (look for OK markers)
+      const hasSuccess = logs.some(l => l.includes('[OK]'));
       const txLine = logs.find(l => l.trim().startsWith('TX:'));
       if (hasSuccess) {
         setExecutionSuccess(true);
@@ -553,19 +553,19 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
 
       logs.push('');
       if (hasSuccess) {
-        logs.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        logs.push('✅ EXECUTION SUCCESSFUL');
+        logs.push('═══════════════════════════════');
+        logs.push('EXECUTION SUCCESSFUL');
         logs.push('All transactions confirmed on Algorand Testnet.');
         logs.push('No data is mocked. Every action was signed');
         logs.push('by your wallet and confirmed on-chain.');
-        logs.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        logs.push('═══════════════════════════════');
       } else {
         logs.push(`───── ${modeLabel} EXECUTION COMPLETE ─────`);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       logs.push('');
-      logs.push(`❌ Execution failed: ${msg}`);
+      logs.push(`[FAIL] Execution failed: ${msg}`);
       logs.push('Please check your wallet connection and try again.');
     }
 
@@ -597,7 +597,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         category: 'action',
         config: { amount: 10000, receiver: activeAddress || '' },
         position: { x: 100, y: 200 },
-        icon: '💰',
+        icon: '▸',
         color: '#3b82f6',
         isReal: true,
       },
@@ -608,7 +608,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         category: 'action',
         config: { amount: 20000, receiver: activeAddress || '' },
         position: { x: 400, y: 200 },
-        icon: '💰',
+        icon: '▸',
         color: '#3b82f6',
         isReal: true,
       },
@@ -619,7 +619,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         category: 'notification',
         config: { title: 'MICROFLUX-X1', body: 'Workflow executed successfully!' },
         position: { x: 700, y: 200 },
-        icon: '🔔',
+        icon: '•',
         color: '#ec4899',
         isReal: true,
       },
@@ -847,7 +847,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                 style={{ color: 'var(--color-error)' }}
                 onClick={() => deleteNode(selectedNode.id)}
               >
-                🗑
+                Remove
               </button>
             </div>
 
@@ -925,7 +925,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                 <div className="sim-row">
                   <span className="sim-label">Execution Type</span>
                   <span className="sim-value" style={{ fontWeight: 700, color: 'var(--color-info)' }}>
-                    {useSmartContract ? '⛓ Atomic' : '⚡ Direct'}
+                    {useSmartContract ? 'Atomic' : 'Direct'}
                   </span>
                 </div>
                 {usdQuote && (
@@ -949,7 +949,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                   marginBottom: '12px',
                 }}
               >
-                🚀 LOAD DEMO WORKFLOW
+                LOAD DEMO WORKFLOW
               </button>
             )}
 
@@ -960,7 +960,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
               disabled={nodes.length === 0 || isSimulating}
               style={{ marginBottom: '8px', fontSize: '0.7rem' }}
             >
-              {isSimulating ? 'SIMULATING...' : '▶ SIMULATE'}
+              {isSimulating ? 'SIMULATING...' : 'SIMULATE'}
             </button>
 
             {/* ── Smart Contract Toggle ───────── */}
@@ -1018,7 +1018,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                 paddingBottom: '6px',
                 borderBottom: '1px solid var(--color-border)',
               }}>
-                📱 On-Chain Contract
+                On-Chain Contract
               </div>
               <div className="sim-row">
                 <span className="sim-label">App ID</span>
@@ -1085,10 +1085,10 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
               {isExecuting ? (
                 <>
                   <span className="loading-spinner"></span>
-                  EXECUTING ON-CHAIN...
+                  EXECUTING...
                 </>
               ) : (
-                '⚡ EXECUTE WORKFLOW'
+                'EXECUTE WORKFLOW'
               )}
             </button>
 
@@ -1114,7 +1114,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                 borderRadius: 'var(--radius-md)',
                 textAlign: 'center',
               }}>
-                <div style={{ fontSize: '1.5rem', marginBottom: '6px' }}>✅</div>
+                <div style={{ fontSize: '0.9rem', marginBottom: '6px', color: 'var(--color-success)', fontWeight: 700 }}>CONFIRMED</div>
                 <div className="text-sm" style={{ fontWeight: 700, color: 'var(--color-success)', marginBottom: '4px' }}>
                   EXECUTION CONFIRMED
                 </div>
@@ -1136,7 +1136,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                       display: 'inline-block',
                     }}
                   >
-                    🔗 VIEW ON EXPLORER
+                    VIEW ON EXPLORER
                   </a>
                 )}
                 <div style={{ marginTop: '8px' }}>
@@ -1145,7 +1145,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                     onClick={executeWorkflow}
                     style={{ fontSize: '0.65rem' }}
                   >
-                    🔄 REPLAY WORKFLOW
+                    REPLAY WORKFLOW
                   </button>
                 </div>
               </div>
@@ -1160,7 +1160,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                   color: 'var(--color-accent)',
                   marginBottom: '8px',
                 }}>
-                  ⚡ Execution Log
+                  Execution Log
                 </div>
                 <div style={{
                   background: 'var(--color-bg-input)',

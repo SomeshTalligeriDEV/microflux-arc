@@ -74,7 +74,7 @@ const AICopilotPanel: React.FC<AICopilotPanelProps> = ({
     <div className="ai-panel animate-fadeIn">
       <div className="ai-panel-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '1.2rem' }}>🤖</span>
+          <span style={{ fontSize: '1.2rem' }}>[BOT]</span>
           <span className="text-sm font-bold text-uppercase" style={{ letterSpacing: '0.06em' }}>
             AI COPILOT
           </span>
@@ -155,12 +155,12 @@ const AICopilotPanel: React.FC<AICopilotPanelProps> = ({
                 GENERATING...
               </>
             ) : (
-              '⚡ GENERATE WORKFLOW'
+              '[EXEC] GENERATE WORKFLOW'
             )}
           </button>
           {!groqApiKey && (
             <button className="btn btn-ghost btn-sm" onClick={() => setShowKeyInput(true)}>
-              🔑
+              API Key required
             </button>
           )}
         </div>

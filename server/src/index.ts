@@ -21,5 +21,5 @@ app.use('/api/intent', intentRoutes);
 
 
 app.listen(port, () => {
-  console.log(`⚡️[server]: MicroFlux Engine is running at http://localhost:${port}`);
+  console.log(`[server]: MicroFlux Engine is running at http://localhost:${port}`);
 });

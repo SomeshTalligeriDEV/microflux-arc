@@ -112,7 +112,7 @@ export async function callExecute(
     const { txId } = await algod.sendRawTransaction(signedTxns[0]).do()
     await algosdk.waitForConfirmation(algod, txId, 4)
 
-    console.log(`[MICROFLUX Contract] ✅ execute() confirmed: ${txId}`)
+    console.log(`[MICROFLUX Contract] OK: execute() confirmed: ${txId}`)
 
     return {
       txId,
@@ -167,7 +167,7 @@ export async function callRegisterWorkflow(
     const { txId } = await algod.sendRawTransaction(signedTxns[0]).do()
     await algosdk.waitForConfirmation(algod, txId, 4)
 
-    console.log(`[MICROFLUX Contract] ✅ register_workflow() confirmed: ${txId}`)
+    console.log(`[MICROFLUX Contract] OK: register_workflow() confirmed: ${txId}`)
     return { txId, appId: targetAppId, success: true, returnValue: 'Workflow registered' }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Registration failed'
@@ -262,7 +262,7 @@ export async function executeAtomicGroup(
     const { txId } = await algod.sendRawTransaction(signedTxns).do()
     await algosdk.waitForConfirmation(algod, txId, 4)
 
-    console.log(`[MICROFLUX Contract] ✅ Atomic group confirmed: ${txId}`)
+    console.log(`[MICROFLUX Contract] OK: Atomic group confirmed: ${txId}`)
 
     const appId = transactions.appCall ? (transactions.appCall.appId || getAppId()) : 0
     return { txId, appId, success: true, returnValue: `Atomic group: ${txns.length} txns` }
@@ -369,7 +369,7 @@ export async function genericAppCall(
     const { txId } = await algod.sendRawTransaction(signedTxns[0]).do()
     await algosdk.waitForConfirmation(algod, txId, 4)
 
-    console.log(`[MICROFLUX Contract] ✅ Generic call confirmed: ${txId}`)
+    console.log(`[MICROFLUX Contract] OK: Generic call confirmed: ${txId}`)
     return { txId, appId, success: true, returnValue: `Called ${methodSignature}` }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'App call failed'
