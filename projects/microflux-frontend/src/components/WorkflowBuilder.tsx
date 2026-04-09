@@ -10,7 +10,20 @@ import {
 } from '../services/nodeDefinitions';
 import { algoToUsd } from '../services/marketService';
 import { sendPayment, sendAsaTransfer, getExplorerTxUrl, fetchAccountBalance } from '../services/walletService';
+import {
+  callExecute,
+  hashWorkflow,
+  getContractState,
+  getAppId,
+  getAppExplorerUrl,
+  executeAtomicGroup,
+  genericAppCall,
+  type ContractState,
+} from '../services/contractService';
 import type { AINode, AIEdge } from '../services/aiService';
+
+// Execution modes
+type ExecutionMode = 'direct' | 'contract' | 'atomic';
 
 // ── Types ────────────────────────────────────
 
@@ -64,6 +77,16 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionLog, setExecutionLog] = useState<string[]>([]);
   const [usdQuote, setUsdQuote] = useState<string | null>(null);
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>('direct');
+  const [contractState, setContractState] = useState<ContractState | null>(null);
+
+  // Load contract state on mount
+  useEffect(() => {
+    const appId = getAppId();
+    if (appId > 0) {
+      getContractState(appId).then(setContractState).catch(() => setContractState(null));
+    }
+  }, []);
   const canvasRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const nodeCounter = useRef(0);
@@ -249,19 +272,11 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     setIsSimulating(false);
   }, [nodes]);
 
-  // Execute real on-chain transactions
-  const executeWorkflow = useCallback(async () => {
+  // ── HYBRID EXECUTION ENGINE ─────────────────
+
+  // MODE A: Direct L1 transactions (individual signing)
+  const executeDirect = useCallback(async (logs: string[]) => {
     if (!activeAddress || !transactionSigner) return;
-
-    setIsExecuting(true);
-    setExecutionLog([]);
-    const logs: string[] = [];
-
-    logs.push('⚡ Starting on-chain execution...');
-    logs.push(`📍 Sender: ${activeAddress.slice(0, 8)}...${activeAddress.slice(-6)}`);
-    logs.push(`🌐 Network: ${networkName}`);
-    logs.push('');
-    setExecutionLog([...logs]);
 
     for (const node of nodes) {
       await new Promise((r) => setTimeout(r, 300));
@@ -331,6 +346,37 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         }
         setExecutionLog([...logs]);
 
+      } else if (node.type === 'app_call' && node.isReal) {
+        const appId = Number(node.config.app_id) || 0;
+        const method = String(node.config.method || '');
+        const args = Array.isArray(node.config.args) ? node.config.args.map(String) : [];
+
+        if (!appId || !method) {
+          logs.push(`⚠️ ${node.label}: Skipped — missing app_id or method`);
+          setExecutionLog([...logs]);
+          continue;
+        }
+
+        logs.push(`🔄 ${node.label}: Calling App ${appId} → ${method}...`);
+        setExecutionLog([...logs]);
+
+        const result = await genericAppCall(
+          activeAddress,
+          appId,
+          method,
+          args,
+          transactionSigner as (txnGroup: unknown[], indexesToSign: number[]) => Promise<Uint8Array[]>,
+        );
+
+        if (result.success) {
+          logs.push(`✅ ${node.label}: App call confirmed`);
+          logs.push(`   TX: ${result.txId}`);
+          logs.push(`   📱 App: ${getAppExplorerUrl(appId, networkName)}`);
+        } else {
+          logs.push(`❌ ${node.label}: ${result.error}`);
+        }
+        setExecutionLog([...logs]);
+
       } else if (node.type === 'browser_notification' && node.isReal) {
         if (Notification.permission === 'granted') {
           new Notification(node.config.title as string, { body: node.config.body as string });
@@ -342,14 +388,150 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         setExecutionLog([...logs]);
 
       } else {
-        // Mock/simulation nodes
         logs.push(`⏭ ${node.label}: Simulated (${node.isReal ? 'on-chain' : 'mock'})`);
         setExecutionLog([...logs]);
       }
     }
+  }, [nodes, activeAddress, transactionSigner, networkName]);
+
+  // MODE B: Execute via WorkflowExecutor smart contract
+  const executeViaContract = useCallback(async (logs: string[]) => {
+    if (!activeAddress || !transactionSigner) return;
+
+    const appId = getAppId();
+    if (!appId) {
+      logs.push('❌ No App ID configured. Deploy contract first.');
+      logs.push('   Set VITE_APP_ID=<app_id> in .env');
+      setExecutionLog([...logs]);
+      return;
+    }
+
+    // Hash the workflow for on-chain verification
+    const workflowData = { nodes: nodes.map(n => ({ type: n.type, config: n.config })), timestamp: Date.now() };
+    const wfHash = await hashWorkflow(workflowData);
+
+    logs.push(`📋 Workflow hash: ${wfHash.slice(0, 24)}...`);
+    logs.push(`📱 App ID: ${appId}`);
+    logs.push(`🔄 Calling execute() on WorkflowExecutor...`);
+    setExecutionLog([...logs]);
+
+    const result = await callExecute(
+      activeAddress,
+      wfHash,
+      transactionSigner as (txnGroup: unknown[], indexesToSign: number[]) => Promise<Uint8Array[]>,
+      appId,
+    );
+
+    if (result.success) {
+      logs.push(`✅ Contract execution confirmed!`);
+      logs.push(`   TX: ${result.txId}`);
+      logs.push(`   🔗 ${getExplorerTxUrl(result.txId, networkName)}`);
+      logs.push(`   📱 ${getAppExplorerUrl(appId, networkName)}`);
+      logs.push('');
+      logs.push('🔒 This execution is now verifiable on-chain');
+
+      // Refresh contract state
+      const newState = await getContractState(appId);
+      if (newState) {
+        setContractState(newState);
+        logs.push(`   Execution #${newState.totalExecutions}`);
+      }
+    } else {
+      logs.push(`❌ Contract call failed: ${result.error}`);
+    }
+    setExecutionLog([...logs]);
+  }, [nodes, activeAddress, transactionSigner, networkName]);
+
+  // MODE C: Atomic transaction group (payments + ASA + app call combined)
+  const executeAtomic = useCallback(async (logs: string[]) => {
+    if (!activeAddress || !transactionSigner) return;
+
+    const payments: Array<{ receiver: string; amountMicroAlgos: number }> = [];
+    const asaTransfers: Array<{ receiver: string; assetId: number; amount: number }> = [];
+
+    for (const node of nodes) {
+      if (node.type === 'send_payment' && node.isReal) {
+        const receiver = String(node.config.receiver || '');
+        const amount = Number(node.config.amount) || 0;
+        if (receiver && receiver !== 'ALGO_ADDRESS_PLACEHOLDER' && amount > 0) {
+          payments.push({ receiver, amountMicroAlgos: amount });
+        }
+      } else if (node.type === 'asa_transfer' && node.isReal) {
+        const receiver = String(node.config.receiver || '');
+        const assetId = Number(node.config.asset_id) || 0;
+        const amount = Number(node.config.amount) || 0;
+        if (receiver && assetId && amount) {
+          asaTransfers.push({ receiver, assetId, amount });
+        }
+      }
+    }
+
+    // Generate workflow hash for contract
+    const workflowData = { nodes: nodes.map(n => ({ type: n.type, config: n.config })), timestamp: Date.now() };
+    const wfHash = await hashWorkflow(workflowData);
+    const appId = getAppId();
+
+    const txnCount = payments.length + asaTransfers.length + (appId ? 1 : 0);
+    logs.push(`📦 Building atomic group: ${txnCount} transactions`);
+    if (payments.length) logs.push(`   💰 ${payments.length} payment(s)`);
+    if (asaTransfers.length) logs.push(`   🪙 ${asaTransfers.length} ASA transfer(s)`);
+    if (appId) logs.push(`   📱 1 app call (App ${appId})`);
+    logs.push(`🔄 Requesting wallet signature for entire group...`);
+    setExecutionLog([...logs]);
+
+    const result = await executeAtomicGroup(
+      activeAddress,
+      {
+        payments: payments.length > 0 ? payments : undefined,
+        asaTransfers: asaTransfers.length > 0 ? asaTransfers : undefined,
+        appCall: appId ? { workflowHash: wfHash, appId } : undefined,
+      },
+      transactionSigner as (txnGroup: unknown[], indexesToSign: number[]) => Promise<Uint8Array[]>,
+    );
+
+    if (result.success) {
+      logs.push(`✅ Atomic group confirmed!`);
+      logs.push(`   TX: ${result.txId}`);
+      logs.push(`   🔗 ${getExplorerTxUrl(result.txId, networkName)}`);
+      if (appId) logs.push(`   📱 ${getAppExplorerUrl(appId, networkName)}`);
+      logs.push('');
+      logs.push(`🔒 All ${txnCount} transactions executed atomically`);
+    } else {
+      logs.push(`❌ Atomic execution failed: ${result.error}`);
+    }
+    setExecutionLog([...logs]);
+  }, [nodes, activeAddress, transactionSigner, networkName]);
+
+  // Master execution handler
+  const executeWorkflow = useCallback(async () => {
+    if (!activeAddress || !transactionSigner) return;
+
+    setIsExecuting(true);
+    setExecutionLog([]);
+    const logs: string[] = [];
+
+    const modeLabel = executionMode === 'direct' ? 'DIRECT' : executionMode === 'contract' ? 'CONTRACT' : 'ATOMIC GROUP';
+    logs.push(`⚡ Starting ${modeLabel} execution...`);
+    logs.push(`📍 Sender: ${activeAddress.slice(0, 8)}...${activeAddress.slice(-6)}`);
+    logs.push(`🌐 Network: ${networkName}`);
+    logs.push(`🔧 Mode: ${modeLabel}`);
+    logs.push('');
+    setExecutionLog([...logs]);
+
+    switch (executionMode) {
+      case 'direct':
+        await executeDirect(logs);
+        break;
+      case 'contract':
+        await executeViaContract(logs);
+        break;
+      case 'atomic':
+        await executeAtomic(logs);
+        break;
+    }
 
     logs.push('');
-    logs.push('───── EXECUTION COMPLETE ─────');
+    logs.push(`───── ${modeLabel} EXECUTION COMPLETE ─────`);
     setExecutionLog([...logs]);
     setIsExecuting(false);
 
@@ -360,7 +542,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         onBalanceUpdate(bal.balanceAlgos);
       } catch { /* ignore */ }
     }
-  }, [nodes, activeAddress, transactionSigner, networkName, onBalanceUpdate]);
+  }, [executionMode, executeDirect, executeViaContract, executeAtomic, activeAddress, transactionSigner, networkName, onBalanceUpdate]);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
@@ -673,7 +855,90 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
               )}
             </button>
 
-            {/* Wallet Status */}
+            {/* ── Execution Mode Toggle ────── */}
+            <div style={{ marginTop: '16px' }}>
+              <div className="text-xs text-uppercase" style={{
+                letterSpacing: '0.08em',
+                fontWeight: 600,
+                color: 'var(--color-text-tertiary)',
+                marginBottom: '8px',
+              }}>
+                Execution Mode
+              </div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr 1fr',
+                gap: '4px',
+                background: 'var(--color-bg-input)',
+                borderRadius: 'var(--radius-md)',
+                padding: '3px',
+                border: '1px solid var(--color-border)',
+              }}>
+                {(['direct', 'contract', 'atomic'] as ExecutionMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setExecutionMode(mode)}
+                    style={{
+                      padding: '6px 4px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '0.65rem',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      transition: 'all 0.15s',
+                      background: executionMode === mode ? 'var(--color-accent)' : 'transparent',
+                      color: executionMode === mode ? 'var(--color-black)' : 'var(--color-text-tertiary)',
+                    }}
+                  >
+                    {mode === 'direct' ? '⚡ Direct' : mode === 'contract' ? '📱 Contract' : '⛓ Atomic'}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted" style={{ marginTop: '4px', lineHeight: '1.4' }}>
+                {executionMode === 'direct' && 'Individual L1 transactions, signed one-by-one.'}
+                {executionMode === 'contract' && 'Execute via WorkflowExecutor smart contract.'}
+                {executionMode === 'atomic' && 'Group all transactions + app call atomically.'}
+              </p>
+            </div>
+
+            {/* ── Contract State ────────────── */}
+            {(executionMode === 'contract' || executionMode === 'atomic') && (
+              <div className="sim-panel" style={{ marginTop: '12px' }}>
+                <div className="sim-row">
+                  <span className="sim-label">App ID</span>
+                  <span className="sim-value">
+                    {getAppId() > 0 ? (
+                      <a
+                        href={getAppExplorerUrl(getAppId(), networkName)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: 'var(--color-accent)' }}
+                      >
+                        {getAppId()}
+                      </a>
+                    ) : (
+                      <span style={{ color: 'var(--color-error)' }}>NOT SET</span>
+                    )}
+                  </span>
+                </div>
+                {contractState && (
+                  <>
+                    <div className="sim-row">
+                      <span className="sim-label">Executions</span>
+                      <span className="sim-value">{contractState.totalExecutions}</span>
+                    </div>
+                    <div className="sim-row">
+                      <span className="sim-label">Workflows</span>
+                      <span className="sim-value">{contractState.workflowCount}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Execute Button */}
             <div style={{ marginTop: '12px' }}>
               <button
                 className="btn btn-primary w-full"
@@ -685,8 +950,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                     <span className="loading-spinner"></span>
                     EXECUTING...
                   </>
-                ) : (
+                ) : executionMode === 'direct' ? (
                   '⚡ EXECUTE ON-CHAIN'
+                ) : executionMode === 'contract' ? (
+                  '📱 EXECUTE VIA CONTRACT'
+                ) : (
+                  '⛓ EXECUTE ATOMIC GROUP'
                 )}
               </button>
               {!activeAddress && (

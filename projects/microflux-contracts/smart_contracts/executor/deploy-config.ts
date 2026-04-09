@@ -1,33 +1,59 @@
 import { AlgorandClient } from '@algorandfoundation/algokit-utils'
-import { ExecutorFactory } from '../artifacts/executor/ExecutorClient'
+import { WorkflowExecutorFactory } from '../artifacts/executor/WorkflowExecutorClient'
 
-// Below is a showcase of various deployment options you can use in TypeScript Client
+/**
+ * Deploy WorkflowExecutor to Algorand Testnet.
+ *
+ * After deployment, copy the App ID to your frontend .env:
+ *   VITE_APP_ID=<app_id>
+ */
 export async function deploy() {
-  console.log('=== Deploying Executor ===')
+  console.log('=== Deploying WorkflowExecutor ===')
 
   const algorand = AlgorandClient.fromEnvironment()
   const deployer = await algorand.account.fromEnvironment('DEPLOYER')
 
-  const factory = algorand.client.getTypedAppFactory(ExecutorFactory, {
+  console.log(`Deployer: ${deployer.addr}`)
+
+  const factory = algorand.client.getTypedAppFactory(WorkflowExecutorFactory, {
     defaultSender: deployer.addr,
   })
 
-  const { appClient, result } = await factory.deploy({ onUpdate: 'append', onSchemaBreak: 'append' })
+  const { appClient, result } = await factory.deploy({
+    onUpdate: 'append',
+    onSchemaBreak: 'append',
+  })
 
-  // If app was just created fund the app account
+  const appId = appClient.appClient.appId
+  const appAddress = appClient.appAddress
+
+  console.log(`✅ WorkflowExecutor deployed!`)
+  console.log(`   App ID:      ${appId}`)
+  console.log(`   App Address: ${appAddress}`)
+  console.log(`   TX ID:       ${result.transaction.txID()}`)
+  console.log(``)
+  console.log(`📋 Add to your frontend .env:`)
+  console.log(`   VITE_APP_ID=${appId}`)
+
+  // If app was just created, fund the app account with MBR
   if (['create', 'replace'].includes(result.operationPerformed)) {
     await algorand.send.payment({
       amount: (1).algo(),
       sender: deployer.addr,
-      receiver: appClient.appAddress,
+      receiver: appAddress,
     })
+    console.log(`💰 Funded app with 1 ALGO for MBR`)
   }
 
-  const method = 'hello'  
-  const response = await appClient.send.hello({
-    args: { name: 'world' },
+  // Verify deployment with a test call
+  const testResponse = await appClient.send.getAppInfo({})
+  console.log(`🔍 Verification: ${testResponse.return}`)
+
+  // Call hello to ensure backward compat
+  const helloResponse = await appClient.send.hello({
+    args: { name: 'MICROFLUX' },
   })
-  console.log(
-    `Called ${method} on ${appClient.appClient.appName} (${appClient.appClient.appId}) with name = world, received: ${response.return}`,
-  )
+  console.log(`🔍 Hello test: ${helloResponse.return}`)
+
+  return { appId, appAddress }
 }

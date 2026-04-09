@@ -1,45 +1,201 @@
-# microflux
+# MICROFLUX-X1
 
-This starter full stack project has been generated using AlgoKit. See below for default getting started instructions.
+**AI-Powered Visual Workflow Builder for Algorand**
 
-## Setup
+MICROFLUX-X1 is the first visual workflow automation platform built natively on the Algorand blockchain. Design workflows with drag-and-drop, let AI generate them from natural language, and execute them on-chain via wallet signing — all from your browser.
 
-### Initial setup
-1. Clone this repository to your local machine.
-2. Ensure [Docker](https://www.docker.com/) is installed and operational. Then, install `AlgoKit` following this [guide](https://github.com/algorandfoundation/algokit-cli#install).
-3. Run `algokit project bootstrap all` in the project directory. This command sets up your environment by installing necessary dependencies, setting up a Python virtual environment, and preparing your `.env` file.
-4. In the case of a smart contract project, execute `algokit generate env-file -a target_network localnet` from the `microflux-contracts` directory to create a `.env.localnet` file with default configuration for `localnet`.
-5. To build your project, execute `algokit project run build`. This compiles your project and prepares it for running.
-6. For project-specific instructions, refer to the READMEs of the child projects:
-   - Smart Contracts: [microflux-contracts](projects/microflux-contracts/README.md)
-   - Frontend Application: [microflux-frontend](projects/microflux-frontend/README.md)
+---
 
-> This project is structured as a monorepo, refer to the [documentation](https://github.com/algorandfoundation/algokit-cli/blob/main/docs/features/project/run.md) to learn more about custom command orchestration via `algokit project run`.
+## ⚡ Key Features
 
-### Subsequently
+| Feature | Status | Details |
+|---------|--------|---------|
+| **Visual Workflow Builder** | ✅ Live | Drag-and-drop canvas with 16 node types |
+| **AI Copilot** | ✅ Live | Groq API — natural language → workflow JSON |
+| **Wallet Integration** | ✅ Live | Pera, Defly, Lute wallets |
+| **On-Chain Payments** | ✅ Live | Native ALGO transfers via algosdk |
+| **ASA Transfers** | ✅ Live | Algorand Standard Asset support |
+| **Smart Contract** | ✅ Live | WorkflowExecutor (ARC-4) deployed on Testnet |
+| **Atomic Groups** | ✅ Live | Payments + ASA + App Call in one atomic group |
+| **Market Data** | ✅ Live | CoinGecko real-time pricing |
+| **Template Marketplace** | ✅ Live | 6 pre-built workflow templates |
 
-1. If you update to the latest source code and there are new dependencies, you will need to run `algokit project bootstrap all` again.
-2. Follow step 3 above.
+---
 
-## Tools
+## 🏗️ Architecture
 
-This project makes use of Python and React to build Algorand smart contracts and to provide a base project configuration to develop frontends for your Algorand dApps and interactions with smart contracts. The following tools are in use:
+```
+microflux/
+├── projects/
+│   ├── microflux-contracts/        ← Algorand Python smart contract
+│   │   └── smart_contracts/
+│   │       └── executor/
+│   │           ├── contract.py     ← WorkflowExecutor (ARC-4)
+│   │           └── deploy-config.ts
+│   │
+│   └── microflux-frontend/         ← React + Vite frontend
+│       └── src/
+│           ├── services/
+│           │   ├── contractService.ts   ← App call + atomic groups
+│           │   ├── walletService.ts     ← Algod + transaction signing
+│           │   ├── aiService.ts         ← Groq AI integration
+│           │   ├── marketService.ts     ← CoinGecko prices
+│           │   └── nodeDefinitions.ts   ← 16 workflow node types
+│           └── components/
+│               ├── WorkflowBuilder.tsx  ← Canvas + hybrid execution
+│               ├── ConnectWallet.tsx    ← Wallet connection modal
+│               └── ...
+│
+└── server/                          ← Express.js backend
+    └── src/
+        └── core/
+            ├── engine/              ← Algorand + Folks Router
+            └── integrations/        ← CoinGecko + Telegram
+```
 
-- Algorand, AlgoKit, and AlgoKit Utils
-- Python dependencies including Poetry, Black, Ruff or Flake8, mypy, pytest, and pip-audit
-- React and related dependencies including AlgoKit Utils, Tailwind CSS, daisyUI, use-wallet, npm, jest, playwright, Prettier, ESLint, and Github Actions workflows for build validation
+---
 
-### VS Code
+## 🚀 On-Chain Execution
 
-It has also been configured to have a productive dev experience out of the box in [VS Code](https://code.visualstudio.com/), see the [backend .vscode](./backend/.vscode) and [frontend .vscode](./frontend/.vscode) folders for more details.
+MICROFLUX-X1 supports **three execution modes**:
 
-## Integrating with smart contracts and application clients
+### Mode 1: Direct Execution (⚡)
+Individual L1 transactions signed one-by-one.
+- Each `send_payment` / `asa_transfer` / `app_call` node creates its own transaction
+- Signed via Pera/Defly/Lute wallet
+- Fastest for simple workflows
 
-Refer to the [microflux-contracts](projects/microflux-contracts/README.md) folder for overview of working with smart contracts, [projects/microflux-frontend](projects/microflux-frontend/README.md) for overview of the React project and the [projects/microflux-frontend/contracts](projects/microflux-frontend/src/contracts/README.md) folder for README on adding new smart contracts from backend as application clients on your frontend. The templates provided in these folders will help you get started.
-When you compile and generate smart contract artifacts, your frontend component will automatically generate typescript application clients from smart contract artifacts and move them to `frontend/src/contracts` folder, see [`generate:app-clients` in package.json](projects/microflux-frontend/package.json). Afterwards, you are free to import and use them in your frontend application.
+### Mode 2: Contract Execution (📱)
+Execute via the **WorkflowExecutor** smart contract.
+- Workflow is hashed (SHA-256) and recorded on-chain
+- `execute(workflow_hash)` called on the deployed contract
+- Provides **verifiability** — execution is provable on-chain
+- Contract tracks execution count and timestamps
 
-The frontend starter also provides an example of interactions with your ExecutorClient in [`AppCalls.tsx`](projects/microflux-frontend/src/components/AppCalls.tsx) component by default.
+### Mode 3: Atomic Groups (⛓)
+**All transactions grouped atomically** — the key differentiator.
+- Payments + ASA transfers + App call combined in one atomic group
+- `algosdk.assignGroupID()` ensures all-or-nothing execution
+- Single wallet signature for the entire group
+- Most powerful mode for complex workflows
 
-## Next Steps
+### WorkflowExecutor Smart Contract
 
-You can take this project and customize it to build your own decentralized applications on Algorand. Make sure to understand how to use AlgoKit and how to write smart contracts for Algorand before you start.
+```python
+class WorkflowExecutor(ARC4Contract):
+    def register_workflow(self, workflow_hash: String) -> String
+    def execute(self, workflow_hash: String) -> String
+    def get_execution_count(self) -> UInt64
+    def verify_hash(self, workflow_hash: String) -> UInt64
+    def set_public_execution(self, enabled: UInt64) -> String
+```
+
+**Global State:**
+- `total_executions` — lifetime execution counter
+- `workflow_count` — registered workflow count
+- `last_workflow_hash` — most recent workflow hash
+- `last_execution_time` — timestamp of last execution
+- `public_execution` — toggle for public/creator-only access
+
+---
+
+## 📋 Setup
+
+### Prerequisites
+- [AlgoKit](https://github.com/algorandfoundation/algokit-cli) installed
+- Node.js 18+
+- Python 3.12+
+
+### 1. Install dependencies
+```bash
+algokit project bootstrap all
+```
+
+### 2. Deploy the smart contract
+```bash
+cd projects/microflux-contracts
+algokit project run build
+algokit project run deploy
+```
+
+Copy the output App ID to your frontend:
+```bash
+# In projects/microflux-frontend/.env
+VITE_APP_ID=<your_app_id>
+```
+
+### 3. Run the frontend
+```bash
+cd projects/microflux-frontend
+npm run dev
+```
+
+### 4. Connect your wallet
+1. Open http://localhost:5173
+2. Click **CONNECT WALLET**
+3. Select Pera / Defly / Lute
+4. Your Testnet balance appears in the navbar
+
+### 5. Execute a workflow
+1. Navigate to **Builder**
+2. Drag nodes from the palette
+3. Connect them with edges
+4. Choose execution mode (Direct / Contract / Atomic)
+5. Click **EXECUTE ON-CHAIN**
+6. Approve the transaction in your wallet
+7. View the TX on the explorer
+
+---
+
+## 🔐 Environment Variables
+
+```env
+# Algorand Testnet
+VITE_ALGOD_SERVER=https://testnet-api.algonode.cloud
+VITE_ALGOD_NETWORK=testnet
+
+# WorkflowExecutor App ID (set after deployment)
+VITE_APP_ID=0
+```
+
+---
+
+## 🛡️ Security
+
+- **No private keys stored** — all signing through wallet providers
+- **AI is assistive only** — never executes transactions
+- **Workflow hashing** — SHA-256 integrity verification on-chain
+- **Creator-only access** — contract restricts execution by default
+
+---
+
+## 🏆 Hackathon Demo Flow
+
+1. **Open MICROFLUX-X1** → Show the landing page
+2. **Connect Pera Wallet** → Balance loads from Testnet
+3. **Create workflow** → Drag Payment + ASA nodes
+4. **Switch to Contract mode** → Show App ID
+5. **Execute via smart contract** → Wallet signs, confirms on-chain
+6. **Show explorer** → TX and App visible on Lora
+7. **Say:** *"This is now verifiable on-chain"*
+
+---
+
+## 📁 Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Smart Contract | Algorand Python (algopy), ARC-4 |
+| Frontend | React + TypeScript + Vite |
+| Wallet | @txnlab/use-wallet (Pera, Defly, Lute) |
+| AI | Groq API (llama-3.3-70b-versatile) |
+| Market Data | CoinGecko API |
+| Backend | Express.js + algosdk |
+| DEX | Folks Router API |
+| Design | ICME-inspired dark mode |
+
+---
+
+## License
+
+MIT
