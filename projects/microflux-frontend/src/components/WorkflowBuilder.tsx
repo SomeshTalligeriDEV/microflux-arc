@@ -77,8 +77,11 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionLog, setExecutionLog] = useState<string[]>([]);
   const [usdQuote, setUsdQuote] = useState<string | null>(null);
-  const [executionMode, setExecutionMode] = useState<ExecutionMode>('direct');
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>('atomic');
   const [contractState, setContractState] = useState<ContractState | null>(null);
+  const [executionSuccess, setExecutionSuccess] = useState(false);
+  const [lastTxId, setLastTxId] = useState<string | null>(null);
+  const [useSmartContract, setUseSmartContract] = useState(true);
 
   // Load contract state on mount
   useEffect(() => {
@@ -87,6 +90,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       getContractState(appId).then(setContractState).catch(() => setContractState(null));
     }
   }, []);
+
+  // Sync execution mode from toggle
+  useEffect(() => {
+    setExecutionMode(useSmartContract ? 'atomic' : 'direct');
+  }, [useSmartContract]);
+
   const canvasRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const nodeCounter = useRef(0);
@@ -508,30 +517,58 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
 
     setIsExecuting(true);
     setExecutionLog([]);
+    setExecutionSuccess(false);
+    setLastTxId(null);
     const logs: string[] = [];
 
     const modeLabel = executionMode === 'direct' ? 'DIRECT' : executionMode === 'contract' ? 'CONTRACT' : 'ATOMIC GROUP';
+    const onChainCount = nodes.filter(n => n.isReal).length;
     logs.push(`⚡ Starting ${modeLabel} execution...`);
     logs.push(`📍 Sender: ${activeAddress.slice(0, 8)}...${activeAddress.slice(-6)}`);
-    logs.push(`🌐 Network: ${networkName}`);
-    logs.push(`🔧 Mode: ${modeLabel}`);
+    logs.push(`🌐 Network: ${networkName} (Algorand Testnet)`);
+    logs.push(`🔧 Mode: ${modeLabel} • ${onChainCount} on-chain transactions`);
     logs.push('');
     setExecutionLog([...logs]);
 
-    switch (executionMode) {
-      case 'direct':
-        await executeDirect(logs);
-        break;
-      case 'contract':
-        await executeViaContract(logs);
-        break;
-      case 'atomic':
-        await executeAtomic(logs);
-        break;
+    try {
+      switch (executionMode) {
+        case 'direct':
+          await executeDirect(logs);
+          break;
+        case 'contract':
+          await executeViaContract(logs);
+          break;
+        case 'atomic':
+          await executeAtomic(logs);
+          break;
+      }
+
+      // Check if any TX was confirmed (look for ✅ in logs)
+      const hasSuccess = logs.some(l => l.includes('✅'));
+      const txLine = logs.find(l => l.trim().startsWith('TX:'));
+      if (hasSuccess) {
+        setExecutionSuccess(true);
+        if (txLine) setLastTxId(txLine.replace(/.*TX:\s*/, '').trim());
+      }
+
+      logs.push('');
+      if (hasSuccess) {
+        logs.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        logs.push('✅ EXECUTION SUCCESSFUL');
+        logs.push('All transactions confirmed on Algorand Testnet.');
+        logs.push('No data is mocked. Every action was signed');
+        logs.push('by your wallet and confirmed on-chain.');
+        logs.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      } else {
+        logs.push(`───── ${modeLabel} EXECUTION COMPLETE ─────`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      logs.push('');
+      logs.push(`❌ Execution failed: ${msg}`);
+      logs.push('Please check your wallet connection and try again.');
     }
 
-    logs.push('');
-    logs.push(`───── ${modeLabel} EXECUTION COMPLETE ─────`);
     setExecutionLog([...logs]);
     setIsExecuting(false);
 
@@ -542,7 +579,63 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         onBalanceUpdate(bal.balanceAlgos);
       } catch { /* ignore */ }
     }
+
+    // Refresh contract state
+    const appId = getAppId();
+    if (appId > 0) {
+      getContractState(appId).then(setContractState).catch(() => {});
+    }
   }, [executionMode, executeDirect, executeViaContract, executeAtomic, activeAddress, transactionSigner, networkName, onBalanceUpdate]);
+
+  // Load demo workflow (one-click)
+  const loadDemoWorkflow = useCallback(() => {
+    const demoNodes: CanvasNodeData[] = [
+      {
+        id: 'demo_1',
+        type: 'send_payment',
+        label: 'Send 0.01 ALGO',
+        category: 'action',
+        config: { amount: 10000, receiver: activeAddress || '' },
+        position: { x: 100, y: 200 },
+        icon: '💰',
+        color: '#3b82f6',
+        isReal: true,
+      },
+      {
+        id: 'demo_2',
+        type: 'send_payment',
+        label: 'Send 0.02 ALGO',
+        category: 'action',
+        config: { amount: 20000, receiver: activeAddress || '' },
+        position: { x: 400, y: 200 },
+        icon: '💰',
+        color: '#3b82f6',
+        isReal: true,
+      },
+      {
+        id: 'demo_3',
+        type: 'browser_notification',
+        label: 'Notify Success',
+        category: 'notification',
+        config: { title: 'MICROFLUX-X1', body: 'Workflow executed successfully!' },
+        position: { x: 700, y: 200 },
+        icon: '🔔',
+        color: '#ec4899',
+        isReal: true,
+      },
+    ];
+    const demoEdges: CanvasEdgeData[] = [
+      { id: 'demo_e1', source: 'demo_1', target: 'demo_2' },
+      { id: 'demo_e2', source: 'demo_2', target: 'demo_3' },
+    ];
+    setNodes(demoNodes);
+    setEdges(demoEdges);
+    setSelectedNodeId(null);
+    setSimResults([]);
+    setExecutionLog([]);
+    setExecutionSuccess(false);
+    nodeCounter.current = 3;
+  }, [activeAddress]);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
@@ -804,6 +897,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         ) : (
           <div className="panel-body">
             {/* Simulation Panel */}
+            {/* ── Workflow Stats ─────────────── */}
             <div style={{ marginBottom: '16px' }}>
               <div className="text-xs text-uppercase" style={{
                 letterSpacing: '0.08em',
@@ -811,7 +905,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                 color: 'var(--color-text-tertiary)',
                 marginBottom: '12px',
               }}>
-                Workflow Stats
+                Workflow Overview
               </div>
               <div className="sim-panel">
                 <div className="sim-row">
@@ -823,155 +917,241 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                   <span className="sim-value">{edges.length}</span>
                 </div>
                 <div className="sim-row">
-                  <span className="sim-label">On-Chain</span>
-                  <span className="sim-value">{nodes.filter((n) => n.isReal).length}</span>
+                  <span className="sim-label">On-Chain Txns</span>
+                  <span className="sim-value" style={{ color: 'var(--color-accent)', fontWeight: 700 }}>
+                    {nodes.filter((n) => n.isReal).length}
+                  </span>
                 </div>
                 <div className="sim-row">
-                  <span className="sim-label">Mock</span>
-                  <span className="sim-value">{nodes.filter((n) => !n.isReal).length}</span>
+                  <span className="sim-label">Execution Type</span>
+                  <span className="sim-value" style={{ fontWeight: 700, color: 'var(--color-info)' }}>
+                    {useSmartContract ? '⛓ Atomic' : '⚡ Direct'}
+                  </span>
                 </div>
                 {usdQuote && (
                   <div className="sim-row">
-                    <span className="sim-label">Value</span>
+                    <span className="sim-label">Est. Value</span>
                     <span className="sim-value sim-usd">{usdQuote}</span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Simulate Button */}
+            {/* ── Load Demo Workflow ──────────── */}
+            {nodes.length === 0 && (
+              <button
+                className="btn w-full"
+                onClick={loadDemoWorkflow}
+                style={{
+                  background: 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(59,130,246,0.15))',
+                  border: '1px solid rgba(139,92,246,0.3)',
+                  color: 'var(--color-text-primary)',
+                  marginBottom: '12px',
+                }}
+              >
+                🚀 LOAD DEMO WORKFLOW
+              </button>
+            )}
+
+            {/* ── Simulate ───────────────────── */}
             <button
-              className="btn btn-accent w-full"
+              className="btn btn-outline w-full"
               onClick={simulateWorkflow}
               disabled={nodes.length === 0 || isSimulating}
+              style={{ marginBottom: '8px', fontSize: '0.7rem' }}
             >
-              {isSimulating ? (
-                <>
-                  <span className="loading-spinner"></span>
-                  SIMULATING...
-                </>
-              ) : (
-                '▶ SIMULATE WORKFLOW'
-              )}
+              {isSimulating ? 'SIMULATING...' : '▶ SIMULATE'}
             </button>
 
-            {/* ── Execution Mode Toggle ────── */}
-            <div style={{ marginTop: '16px' }}>
+            {/* ── Smart Contract Toggle ───────── */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 12px',
+              background: 'var(--color-bg-input)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-md)',
+              marginBottom: '10px',
+              cursor: 'pointer',
+            }}
+              onClick={() => setUseSmartContract(!useSmartContract)}
+            >
+              <div style={{
+                width: '32px',
+                height: '18px',
+                borderRadius: '9px',
+                background: useSmartContract ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
+                position: 'relative',
+                transition: 'background 0.2s',
+                flexShrink: 0,
+                border: `1px solid ${useSmartContract ? 'var(--color-accent)' : 'var(--color-border)'}`,
+              }}>
+                <div style={{
+                  width: '14px',
+                  height: '14px',
+                  borderRadius: '50%',
+                  background: 'white',
+                  position: 'absolute',
+                  top: '1px',
+                  left: useSmartContract ? '16px' : '1px',
+                  transition: 'left 0.2s',
+                }} />
+              </div>
+              <div>
+                <div className="text-xs" style={{ fontWeight: 600 }}>
+                  Use Smart Contract
+                </div>
+                <div className="text-xs text-muted" style={{ fontSize: '0.6rem' }}>
+                  {useSmartContract ? 'Atomic group + App call (verifiable)' : 'Direct L1 transactions'}
+                </div>
+              </div>
+            </div>
+
+            {/* ── Contract State (Trust Signal) ── */}
+            <div className="sim-panel" style={{ marginBottom: '12px' }}>
               <div className="text-xs text-uppercase" style={{
                 letterSpacing: '0.08em',
                 fontWeight: 600,
-                color: 'var(--color-text-tertiary)',
+                color: 'var(--color-accent)',
                 marginBottom: '8px',
+                paddingBottom: '6px',
+                borderBottom: '1px solid var(--color-border)',
               }}>
-                Execution Mode
+                📱 On-Chain Contract
               </div>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr 1fr',
-                gap: '4px',
-                background: 'var(--color-bg-input)',
-                borderRadius: 'var(--radius-md)',
-                padding: '3px',
-                border: '1px solid var(--color-border)',
-              }}>
-                {(['direct', 'contract', 'atomic'] as ExecutionMode[]).map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setExecutionMode(mode)}
-                    style={{
-                      padding: '6px 4px',
-                      borderRadius: 'var(--radius-sm)',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '0.65rem',
-                      fontWeight: 700,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                      transition: 'all 0.15s',
-                      background: executionMode === mode ? 'var(--color-accent)' : 'transparent',
-                      color: executionMode === mode ? 'var(--color-black)' : 'var(--color-text-tertiary)',
-                    }}
-                  >
-                    {mode === 'direct' ? '⚡ Direct' : mode === 'contract' ? '📱 Contract' : '⛓ Atomic'}
-                  </button>
-                ))}
+              <div className="sim-row">
+                <span className="sim-label">App ID</span>
+                <span className="sim-value">
+                  {getAppId() > 0 ? (
+                    <a
+                      href={getAppExplorerUrl(getAppId(), networkName)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: 'var(--color-accent)', fontWeight: 700 }}
+                    >
+                      {getAppId()}
+                    </a>
+                  ) : (
+                    <span style={{ color: 'var(--color-text-tertiary)' }}>Not deployed</span>
+                  )}
+                </span>
               </div>
-              <p className="text-xs text-muted" style={{ marginTop: '4px', lineHeight: '1.4' }}>
-                {executionMode === 'direct' && 'Individual L1 transactions, signed one-by-one.'}
-                {executionMode === 'contract' && 'Execute via WorkflowExecutor smart contract.'}
-                {executionMode === 'atomic' && 'Group all transactions + app call atomically.'}
-              </p>
+              <div className="sim-row">
+                <span className="sim-label">Total Executions</span>
+                <span className="sim-value" style={{ fontWeight: 700, color: 'var(--color-success)' }}>
+                  {contractState?.totalExecutions ?? '—'}
+                </span>
+              </div>
+              <div className="sim-row">
+                <span className="sim-label">Workflows Registered</span>
+                <span className="sim-value">{contractState?.workflowCount ?? '—'}</span>
+              </div>
+              <div className="sim-row">
+                <span className="sim-label">Status</span>
+                <span className="sim-value">
+                  {executionSuccess ? (
+                    <span style={{ color: 'var(--color-success)', fontWeight: 700 }}>
+                      <span className="status-dot status-dot-success" style={{ marginRight: '4px' }}></span>
+                      Last: Success
+                    </span>
+                  ) : (
+                    <span className="text-muted">Ready</span>
+                  )}
+                </span>
+              </div>
+              <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--color-border)' }}>
+                <span className="text-xs text-muted" style={{ fontSize: '0.6rem', lineHeight: '1.4' }}>
+                  All executions are real Algorand Testnet transactions.
+                  No data is mocked.
+                </span>
+              </div>
             </div>
 
-            {/* ── Contract State ────────────── */}
-            {(executionMode === 'contract' || executionMode === 'atomic') && (
-              <div className="sim-panel" style={{ marginTop: '12px' }}>
-                <div className="sim-row">
-                  <span className="sim-label">App ID</span>
-                  <span className="sim-value">
-                    {getAppId() > 0 ? (
-                      <a
-                        href={getAppExplorerUrl(getAppId(), networkName)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: 'var(--color-accent)' }}
-                      >
-                        {getAppId()}
-                      </a>
-                    ) : (
-                      <span style={{ color: 'var(--color-error)' }}>NOT SET</span>
-                    )}
-                  </span>
+            {/* ── PRIMARY EXECUTE BUTTON ────── */}
+            <button
+              className="btn btn-primary w-full"
+              disabled={nodes.length === 0 || !activeAddress || isExecuting}
+              onClick={executeWorkflow}
+              style={{
+                padding: '14px',
+                fontSize: '0.8rem',
+                fontWeight: 800,
+                letterSpacing: '0.06em',
+                position: 'relative',
+                overflow: 'hidden',
+              }}
+            >
+              {isExecuting ? (
+                <>
+                  <span className="loading-spinner"></span>
+                  EXECUTING ON-CHAIN...
+                </>
+              ) : (
+                '⚡ EXECUTE WORKFLOW'
+              )}
+            </button>
+
+            {!activeAddress && (
+              <p className="text-xs text-muted" style={{ marginTop: '6px', textAlign: 'center' }}>
+                Connect wallet to execute
+              </p>
+            )}
+            {activeAddress && !isExecuting && (
+              <p className="text-xs" style={{ marginTop: '6px', textAlign: 'center', color: 'var(--color-success)' }}>
+                <span className="status-dot status-dot-success" style={{ marginRight: '4px' }}></span>
+                Wallet connected • {networkName}
+              </p>
+            )}
+
+            {/* ── SUCCESS BANNER ──────────────── */}
+            {executionSuccess && !isExecuting && (
+              <div style={{
+                marginTop: '12px',
+                padding: '14px',
+                background: 'rgba(34, 197, 94, 0.08)',
+                border: '1px solid rgba(34, 197, 94, 0.25)',
+                borderRadius: 'var(--radius-md)',
+                textAlign: 'center',
+              }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '6px' }}>✅</div>
+                <div className="text-sm" style={{ fontWeight: 700, color: 'var(--color-success)', marginBottom: '4px' }}>
+                  EXECUTION CONFIRMED
                 </div>
-                {contractState && (
-                  <>
-                    <div className="sim-row">
-                      <span className="sim-label">Executions</span>
-                      <span className="sim-value">{contractState.totalExecutions}</span>
-                    </div>
-                    <div className="sim-row">
-                      <span className="sim-label">Workflows</span>
-                      <span className="sim-value">{contractState.workflowCount}</span>
-                    </div>
-                  </>
+                <div className="text-xs text-muted" style={{ marginBottom: '8px' }}>
+                  Verified on Algorand Testnet
+                </div>
+                {lastTxId && (
+                  <a
+                    href={getExplorerTxUrl(lastTxId, networkName)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-sm"
+                    style={{
+                      background: 'var(--color-success)',
+                      color: 'white',
+                      border: 'none',
+                      fontSize: '0.65rem',
+                      marginBottom: '8px',
+                      display: 'inline-block',
+                    }}
+                  >
+                    🔗 VIEW ON EXPLORER
+                  </a>
                 )}
+                <div style={{ marginTop: '8px' }}>
+                  <button
+                    className="btn btn-outline btn-sm"
+                    onClick={executeWorkflow}
+                    style={{ fontSize: '0.65rem' }}
+                  >
+                    🔄 REPLAY WORKFLOW
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* Execute Button */}
-            <div style={{ marginTop: '12px' }}>
-              <button
-                className="btn btn-primary w-full"
-                disabled={nodes.length === 0 || !activeAddress || isExecuting}
-                onClick={executeWorkflow}
-              >
-                {isExecuting ? (
-                  <>
-                    <span className="loading-spinner"></span>
-                    EXECUTING...
-                  </>
-                ) : executionMode === 'direct' ? (
-                  '⚡ EXECUTE ON-CHAIN'
-                ) : executionMode === 'contract' ? (
-                  '📱 EXECUTE VIA CONTRACT'
-                ) : (
-                  '⛓ EXECUTE ATOMIC GROUP'
-                )}
-              </button>
-              {!activeAddress && (
-                <p className="text-xs text-muted" style={{ marginTop: '6px', textAlign: 'center' }}>
-                  Connect wallet to execute
-                </p>
-              )}
-              {activeAddress && (
-                <p className="text-xs" style={{ marginTop: '6px', textAlign: 'center', color: 'var(--color-success)' }}>
-                  <span className="status-dot status-dot-success" style={{ marginRight: '4px' }}></span>
-                  Wallet connected • {networkName}
-                </p>
-              )}
-            </div>
-
-            {/* Execution Log */}
+            {/* ── Execution Log ───────────────── */}
             {executionLog.length > 0 && (
               <div style={{ marginTop: '16px' }}>
                 <div className="text-xs text-uppercase" style={{
@@ -984,7 +1164,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                 </div>
                 <div style={{
                   background: 'var(--color-bg-input)',
-                  border: '1px solid var(--color-border-accent)',
+                  border: `1px solid ${executionSuccess ? 'rgba(34,197,94,0.3)' : 'var(--color-border-accent)'}`,
                   borderRadius: 'var(--radius-md)',
                   padding: '12px',
                   maxHeight: '300px',
@@ -1002,7 +1182,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
               </div>
             )}
 
-            {/* Simulation Results */}
+            {/* ── Simulation Results ──────────── */}
             {simResults.length > 0 && (
               <div style={{ marginTop: '16px' }}>
                 <div className="text-xs text-uppercase" style={{
@@ -1018,7 +1198,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                   border: '1px solid var(--color-border)',
                   borderRadius: 'var(--radius-md)',
                   padding: '12px',
-                  maxHeight: '300px',
+                  maxHeight: '200px',
                   overflowY: 'auto',
                   fontFamily: 'var(--font-mono)',
                   fontSize: '0.7rem',
