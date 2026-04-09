@@ -9,6 +9,7 @@ import {
   type NodeDefinition,
 } from '../services/nodeDefinitions';
 import { algoToUsd } from '../services/marketService';
+import { sendPayment, sendAsaTransfer, getExplorerTxUrl, fetchAccountBalance } from '../services/walletService';
 import type { AINode, AIEdge } from '../services/aiService';
 
 // ── Types ────────────────────────────────────
@@ -36,6 +37,9 @@ interface WorkflowBuilderProps {
   initialEdges?: AIEdge[];
   workflowName?: string;
   activeAddress: string | null;
+  transactionSigner?: (txnGroup: unknown[], indexesToSign: number[]) => Promise<Uint8Array[]>;
+  networkName?: string;
+  onBalanceUpdate?: (balance: number) => void;
 }
 
 // ── WorkflowBuilder ──────────────────────────
@@ -45,6 +49,9 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   initialEdges,
   workflowName,
   activeAddress,
+  transactionSigner,
+  networkName = 'localnet',
+  onBalanceUpdate,
 }) => {
   const [nodes, setNodes] = useState<CanvasNodeData[]>([]);
   const [edges, setEdges] = useState<CanvasEdgeData[]>([]);
@@ -54,6 +61,8 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
   const [simResults, setSimResults] = useState<string[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionLog, setExecutionLog] = useState<string[]>([]);
   const [usdQuote, setUsdQuote] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -239,6 +248,119 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     setSimResults([...logs]);
     setIsSimulating(false);
   }, [nodes]);
+
+  // Execute real on-chain transactions
+  const executeWorkflow = useCallback(async () => {
+    if (!activeAddress || !transactionSigner) return;
+
+    setIsExecuting(true);
+    setExecutionLog([]);
+    const logs: string[] = [];
+
+    logs.push('⚡ Starting on-chain execution...');
+    logs.push(`📍 Sender: ${activeAddress.slice(0, 8)}...${activeAddress.slice(-6)}`);
+    logs.push(`🌐 Network: ${networkName}`);
+    logs.push('');
+    setExecutionLog([...logs]);
+
+    for (const node of nodes) {
+      await new Promise((r) => setTimeout(r, 300));
+
+      if (node.type === 'send_payment' && node.isReal) {
+        const amount = Number(node.config.amount) || 0;
+        const receiver = String(node.config.receiver || '');
+
+        if (!receiver || receiver === 'ALGO_ADDRESS_PLACEHOLDER') {
+          logs.push(`⚠️ ${node.label}: Skipped — no receiver set`);
+          setExecutionLog([...logs]);
+          continue;
+        }
+
+        logs.push(`🔄 ${node.label}: Requesting wallet signature...`);
+        setExecutionLog([...logs]);
+
+        const result = await sendPayment(
+          activeAddress,
+          receiver,
+          amount,
+          transactionSigner as (txnGroup: unknown[], indexesToSign: number[]) => Promise<Uint8Array[]>,
+        );
+
+        if (result.success) {
+          const algoAmt = amount / 1_000_000;
+          try {
+            const quote = await algoToUsd(algoAmt);
+            logs.push(`✅ ${node.label}: Sent ${algoAmt} ALGO (~${quote.formatted})`);
+          } catch {
+            logs.push(`✅ ${node.label}: Sent ${algoAmt} ALGO`);
+          }
+          logs.push(`   TX: ${result.txId}`);
+          logs.push(`   🔗 ${getExplorerTxUrl(result.txId, networkName)}`);
+        } else {
+          logs.push(`❌ ${node.label}: ${result.error}`);
+        }
+        setExecutionLog([...logs]);
+
+      } else if (node.type === 'asa_transfer' && node.isReal) {
+        const assetId = Number(node.config.asset_id) || 0;
+        const amount = Number(node.config.amount) || 0;
+        const receiver = String(node.config.receiver || '');
+
+        if (!receiver || !assetId) {
+          logs.push(`⚠️ ${node.label}: Skipped — missing config`);
+          setExecutionLog([...logs]);
+          continue;
+        }
+
+        logs.push(`🔄 ${node.label}: Requesting wallet signature...`);
+        setExecutionLog([...logs]);
+
+        const result = await sendAsaTransfer(
+          activeAddress,
+          receiver,
+          assetId,
+          amount,
+          transactionSigner as (txnGroup: unknown[], indexesToSign: number[]) => Promise<Uint8Array[]>,
+        );
+
+        if (result.success) {
+          logs.push(`✅ ${node.label}: Transferred ${amount} of ASA #${assetId}`);
+          logs.push(`   TX: ${result.txId}`);
+        } else {
+          logs.push(`❌ ${node.label}: ${result.error}`);
+        }
+        setExecutionLog([...logs]);
+
+      } else if (node.type === 'browser_notification' && node.isReal) {
+        if (Notification.permission === 'granted') {
+          new Notification(node.config.title as string, { body: node.config.body as string });
+          logs.push(`🔔 ${node.label}: Notification sent`);
+        } else if (Notification.permission !== 'denied') {
+          await Notification.requestPermission();
+          logs.push(`🔔 ${node.label}: Permission requested`);
+        }
+        setExecutionLog([...logs]);
+
+      } else {
+        // Mock/simulation nodes
+        logs.push(`⏭ ${node.label}: Simulated (${node.isReal ? 'on-chain' : 'mock'})`);
+        setExecutionLog([...logs]);
+      }
+    }
+
+    logs.push('');
+    logs.push('───── EXECUTION COMPLETE ─────');
+    setExecutionLog([...logs]);
+    setIsExecuting(false);
+
+    // Refresh balance after execution
+    if (activeAddress && onBalanceUpdate) {
+      try {
+        const bal = await fetchAccountBalance(activeAddress);
+        onBalanceUpdate(bal.balanceAlgos);
+      } catch { /* ignore */ }
+    }
+  }, [nodes, activeAddress, transactionSigner, networkName, onBalanceUpdate]);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
@@ -555,16 +677,61 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
             <div style={{ marginTop: '12px' }}>
               <button
                 className="btn btn-primary w-full"
-                disabled={nodes.length === 0 || !activeAddress}
+                disabled={nodes.length === 0 || !activeAddress || isExecuting}
+                onClick={executeWorkflow}
               >
-                ⚡ EXECUTE ON-CHAIN
+                {isExecuting ? (
+                  <>
+                    <span className="loading-spinner"></span>
+                    EXECUTING...
+                  </>
+                ) : (
+                  '⚡ EXECUTE ON-CHAIN'
+                )}
               </button>
               {!activeAddress && (
                 <p className="text-xs text-muted" style={{ marginTop: '6px', textAlign: 'center' }}>
                   Connect wallet to execute
                 </p>
               )}
+              {activeAddress && (
+                <p className="text-xs" style={{ marginTop: '6px', textAlign: 'center', color: 'var(--color-success)' }}>
+                  <span className="status-dot status-dot-success" style={{ marginRight: '4px' }}></span>
+                  Wallet connected • {networkName}
+                </p>
+              )}
             </div>
+
+            {/* Execution Log */}
+            {executionLog.length > 0 && (
+              <div style={{ marginTop: '16px' }}>
+                <div className="text-xs text-uppercase" style={{
+                  letterSpacing: '0.08em',
+                  fontWeight: 600,
+                  color: 'var(--color-accent)',
+                  marginBottom: '8px',
+                }}>
+                  ⚡ Execution Log
+                </div>
+                <div style={{
+                  background: 'var(--color-bg-input)',
+                  border: '1px solid var(--color-border-accent)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '12px',
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.7rem',
+                  lineHeight: '1.8',
+                }}>
+                  {executionLog.map((line, i) => (
+                    <div key={i} className="animate-slideUp" style={{ animationDelay: `${i * 30}ms` }}>
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Simulation Results */}
             {simResults.length > 0 && (
