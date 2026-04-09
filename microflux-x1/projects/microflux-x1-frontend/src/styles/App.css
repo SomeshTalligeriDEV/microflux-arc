@@ -124,3 +124,69 @@
   margin-top: 1rem;
   margin-bottom: 1rem;
 }
+
+/* Dark mode and XYFlow custom styles */
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  background-color: #0a0a0f;
+  color: #f8fafc;
+}
+
+/* XYFlow dark theme */
+.react-flow {
+  --xy-edge-stroke: #2d2d3a;
+  --xy-edge-stroke-selected: #00d4aa;
+  --xy-node-border-default: #2d2d3a;
+  --xy-node-background-color-default: #1a1a2e;
+  --xy-handle-background-color-default: #00d4aa;
+  --xy-handle-border-color-default: #00d4aa;
+  --xy-minimap-background-color: #1a1a2e;
+  --xy-minimap-mask-background-color: rgba(10, 10, 15, 0.7);
+  --xy-controls-button-background-color: #1a1a2e;
+  --xy-controls-button-background-color-hover: #252535;
+  --xy-controls-button-color: #f8fafc;
+  --xy-controls-button-color-hover: #f8fafc;
+  --xy-controls-button-border-color: #2d2d3a;
+  --xy-edge-label-background-color: #1a1a2e;
+  --xy-edge-label-color: #f8fafc;
+}
+
+.react-flow__node {
+  border-width: 2px;
+}
+
+.react-flow__handle {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+}
+
+.react-flow__controls-button {
+  border-width: 1px;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0f;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2d2d3a;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3d3d4a;
+}
+
+/* Selection color */
+::selection {
+  background-color: rgba(0, 212, 170, 0.3);
+  color: #f8fafc;
+}

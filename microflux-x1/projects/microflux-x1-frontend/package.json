@@ -29,11 +29,16 @@
     "@perawallet/connect": "^1.4.1",
     "@txnlab/use-wallet": "^4.0.0",
     "@txnlab/use-wallet-react": "^4.0.0",
+    "@types/uuid": "^10.0.0",
+    "@xyflow/react": "^12.10.2",
     "algosdk": "^3.0.0",
+    "immer": "^11.1.4",
     "notistack": "^3.0.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "tslib": "^2.6.2"
+    "tslib": "^2.6.2",
+    "uuid": "^13.0.0",
+    "zustand": "^5.0.12"
   },
   "scripts": {
     "generate:app-clients": "algokit project link --all",
