@@ -1,0 +1,397 @@
+/**
+ * Template Marketplace — Pre-built Workflow Definitions
+ * Local JSON templates for common Algorand workflows
+ */
+
+import type { AINode, AIEdge } from './aiService';
+
+// ── Types ────────────────────────────────────
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: TemplateCategory;
+  tags: string[];
+  nodes: AINode[];
+  edges: AIEdge[];
+  difficulty: 'beginner' | 'intermediate' | 'advanced';
+  estimatedGas: string;
+  author: string;
+}
+
+export type TemplateCategory = 'payments' | 'treasury' | 'trading' | 'automation';
+
+// ── Template Definitions ─────────────────────
+
+export const TEMPLATES: WorkflowTemplate[] = [
+  // ── PAYMENTS ────────────────────────────────
+  {
+    id: 'tpl_send_algo',
+    name: 'Send ALGO',
+    description: 'Simple payment workflow: send ALGO from one wallet to another with confirmation.',
+    category: 'payments',
+    tags: ['payment', 'algo', 'transfer', 'real'],
+    difficulty: 'beginner',
+    estimatedGas: '0.001 ALGO',
+    author: 'MICROFLUX-X1',
+    nodes: [
+      {
+        id: 'n1',
+        type: 'wallet_event',
+        label: 'Trigger: Manual',
+        category: 'trigger',
+        config: { event: 'manual_trigger' },
+        position: { x: 80, y: 200 },
+      },
+      {
+        id: 'n2',
+        type: 'send_payment',
+        label: 'Send 1 ALGO',
+        category: 'action',
+        config: { amount: 1000000, receiver: 'ALGO_ADDRESS_PLACEHOLDER' },
+        position: { x: 350, y: 200 },
+      },
+      {
+        id: 'n3',
+        type: 'debug_log',
+        label: 'Log Result',
+        category: 'logic',
+        config: { message: 'Payment sent successfully' },
+        position: { x: 620, y: 200 },
+      },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      { id: 'e2', source: 'n2', target: 'n3' },
+    ],
+  },
+
+  {
+    id: 'tpl_asa_transfer',
+    name: 'ASA Transfer',
+    description: 'Transfer Algorand Standard Assets with opt-in check and confirmation notification.',
+    category: 'payments',
+    tags: ['asa', 'transfer', 'token', 'real'],
+    difficulty: 'intermediate',
+    estimatedGas: '0.002 ALGO',
+    author: 'MICROFLUX-X1',
+    nodes: [
+      {
+        id: 'n1',
+        type: 'wallet_event',
+        label: 'Trigger: Manual',
+        category: 'trigger',
+        config: { event: 'manual_trigger' },
+        position: { x: 80, y: 200 },
+      },
+      {
+        id: 'n2',
+        type: 'filter',
+        label: 'Check Opt-In',
+        category: 'logic',
+        config: { condition: 'receiver_opted_in', asset_id: 0 },
+        position: { x: 350, y: 200 },
+      },
+      {
+        id: 'n3',
+        type: 'asa_transfer',
+        label: 'Transfer ASA',
+        category: 'action',
+        config: { asset_id: 0, amount: 100, receiver: 'ALGO_ADDRESS_PLACEHOLDER' },
+        position: { x: 620, y: 150 },
+      },
+      {
+        id: 'n4',
+        type: 'browser_notification',
+        label: 'Notify: Success',
+        category: 'notification',
+        config: { title: 'ASA Transfer Complete', body: 'Tokens sent successfully' },
+        position: { x: 890, y: 150 },
+      },
+      {
+        id: 'n5',
+        type: 'debug_log',
+        label: 'Log: Not Opted In',
+        category: 'logic',
+        config: { message: 'Receiver has not opted in to asset' },
+        position: { x: 620, y: 300 },
+      },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      { id: 'e2', source: 'n2', target: 'n3' },
+      { id: 'e3', source: 'n2', target: 'n5' },
+      { id: 'e4', source: 'n3', target: 'n4' },
+    ],
+  },
+
+  // ── TREASURY ────────────────────────────────
+  {
+    id: 'tpl_treasury_dist',
+    name: 'Treasury Distribution',
+    description: 'Distribute funds from a treasury wallet to multiple recipients in a single workflow.',
+    category: 'treasury',
+    tags: ['treasury', 'distribution', 'multi-send', 'real'],
+    difficulty: 'advanced',
+    estimatedGas: '0.005 ALGO',
+    author: 'MICROFLUX-X1',
+    nodes: [
+      {
+        id: 'n1',
+        type: 'wallet_event',
+        label: 'Trigger: Manual',
+        category: 'trigger',
+        config: { event: 'manual_trigger' },
+        position: { x: 80, y: 250 },
+      },
+      {
+        id: 'n2',
+        type: 'get_quote',
+        label: 'Get ALGO Price',
+        category: 'defi',
+        config: { token: 'ALGO' },
+        position: { x: 350, y: 250 },
+      },
+      {
+        id: 'n3',
+        type: 'send_payment',
+        label: 'Pay Team Lead (40%)',
+        category: 'action',
+        config: { amount: 4000000, receiver: 'TEAM_LEAD_ADDRESS' },
+        position: { x: 650, y: 100 },
+      },
+      {
+        id: 'n4',
+        type: 'send_payment',
+        label: 'Pay Dev Fund (35%)',
+        category: 'action',
+        config: { amount: 3500000, receiver: 'DEV_FUND_ADDRESS' },
+        position: { x: 650, y: 250 },
+      },
+      {
+        id: 'n5',
+        type: 'send_payment',
+        label: 'Pay Reserve (25%)',
+        category: 'action',
+        config: { amount: 2500000, receiver: 'RESERVE_ADDRESS' },
+        position: { x: 650, y: 400 },
+      },
+      {
+        id: 'n6',
+        type: 'browser_notification',
+        label: 'Distribution Complete',
+        category: 'notification',
+        config: { title: 'Treasury', body: 'All payments distributed' },
+        position: { x: 950, y: 250 },
+      },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      { id: 'e2', source: 'n2', target: 'n3' },
+      { id: 'e3', source: 'n2', target: 'n4' },
+      { id: 'e4', source: 'n2', target: 'n5' },
+      { id: 'e5', source: 'n3', target: 'n6' },
+      { id: 'e6', source: 'n4', target: 'n6' },
+      { id: 'e7', source: 'n5', target: 'n6' },
+    ],
+  },
+
+  // ── TRADING ─────────────────────────────────
+  {
+    id: 'tpl_price_alert',
+    name: 'Price Alert Workflow',
+    description: 'Monitor ALGO price and trigger a notification when it crosses a threshold.',
+    category: 'trading',
+    tags: ['trading', 'alert', 'price', 'mock'],
+    difficulty: 'beginner',
+    estimatedGas: '0 ALGO (off-chain)',
+    author: 'MICROFLUX-X1',
+    nodes: [
+      {
+        id: 'n1',
+        type: 'timer_loop',
+        label: 'Check Every 60s',
+        category: 'trigger',
+        config: { interval: 60000 },
+        position: { x: 80, y: 200 },
+      },
+      {
+        id: 'n2',
+        type: 'price_feed',
+        label: 'Get ALGO/USD',
+        category: 'defi',
+        config: { token: 'ALGO', vs: 'USD' },
+        position: { x: 350, y: 200 },
+      },
+      {
+        id: 'n3',
+        type: 'filter',
+        label: 'Price > $0.30?',
+        category: 'logic',
+        config: { condition: 'gt', field: 'price', value: 0.30 },
+        position: { x: 620, y: 200 },
+      },
+      {
+        id: 'n4',
+        type: 'browser_notification',
+        label: 'Alert: Price Up!',
+        category: 'notification',
+        config: { title: 'ALGO Price Alert', body: 'ALGO crossed $0.30!' },
+        position: { x: 890, y: 200 },
+      },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      { id: 'e2', source: 'n2', target: 'n3' },
+      { id: 'e3', source: 'n3', target: 'n4' },
+    ],
+  },
+
+  // ── AUTOMATION ──────────────────────────────
+  {
+    id: 'tpl_scheduled_payment',
+    name: 'Scheduled Payment',
+    description: 'Simulate scheduled recurring payments with timer triggers and payment actions.',
+    category: 'automation',
+    tags: ['automation', 'schedule', 'payment', 'mock'],
+    difficulty: 'intermediate',
+    estimatedGas: '0.001 ALGO per execution',
+    author: 'MICROFLUX-X1',
+    nodes: [
+      {
+        id: 'n1',
+        type: 'timer_loop',
+        label: 'Every 24h (Simulated)',
+        category: 'trigger',
+        config: { interval: 86400000 },
+        position: { x: 80, y: 200 },
+      },
+      {
+        id: 'n2',
+        type: 'get_quote',
+        label: 'Check Balance',
+        category: 'defi',
+        config: { token: 'ALGO', action: 'balance_check' },
+        position: { x: 350, y: 200 },
+      },
+      {
+        id: 'n3',
+        type: 'filter',
+        label: 'Balance >= 10 ALGO?',
+        category: 'logic',
+        config: { condition: 'gte', field: 'balance', value: 10000000 },
+        position: { x: 620, y: 200 },
+      },
+      {
+        id: 'n4',
+        type: 'send_payment',
+        label: 'Send Scheduled Payment',
+        category: 'action',
+        config: { amount: 5000000, receiver: 'PAYEE_ADDRESS' },
+        position: { x: 890, y: 150 },
+      },
+      {
+        id: 'n5',
+        type: 'discord_notify',
+        label: 'Notify Discord',
+        category: 'notification',
+        config: { channel: 'payments', message: 'Scheduled payment sent' },
+        position: { x: 1160, y: 150 },
+      },
+      {
+        id: 'n6',
+        type: 'debug_log',
+        label: 'Log: Insufficient',
+        category: 'logic',
+        config: { message: 'Insufficient balance for payment' },
+        position: { x: 890, y: 320 },
+      },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      { id: 'e2', source: 'n2', target: 'n3' },
+      { id: 'e3', source: 'n3', target: 'n4' },
+      { id: 'e4', source: 'n3', target: 'n6' },
+      { id: 'e5', source: 'n4', target: 'n5' },
+    ],
+  },
+
+  {
+    id: 'tpl_webhook_action',
+    name: 'Webhook → Action',
+    description: 'Listen for a webhook trigger, process the data, and execute an on-chain action.',
+    category: 'automation',
+    tags: ['webhook', 'automation', 'mock'],
+    difficulty: 'intermediate',
+    estimatedGas: '0.001 ALGO',
+    author: 'MICROFLUX-X1',
+    nodes: [
+      {
+        id: 'n1',
+        type: 'webhook_trigger',
+        label: 'Webhook: /api/trigger',
+        category: 'trigger',
+        config: { path: '/api/trigger', method: 'POST' },
+        position: { x: 80, y: 200 },
+      },
+      {
+        id: 'n2',
+        type: 'filter',
+        label: 'Validate Payload',
+        category: 'logic',
+        config: { condition: 'has_field', field: 'amount' },
+        position: { x: 350, y: 200 },
+      },
+      {
+        id: 'n3',
+        type: 'send_payment',
+        label: 'Execute Payment',
+        category: 'action',
+        config: { amount_from: 'payload.amount', receiver_from: 'payload.receiver' },
+        position: { x: 620, y: 200 },
+      },
+      {
+        id: 'n4',
+        type: 'http_request',
+        label: 'Callback: Confirm',
+        category: 'action',
+        config: { url: 'payload.callback_url', method: 'POST' },
+        position: { x: 890, y: 200 },
+      },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      { id: 'e2', source: 'n2', target: 'n3' },
+      { id: 'e3', source: 'n3', target: 'n4' },
+    ],
+  },
+];
+
+// ── Helpers ──────────────────────────────────
+
+export function getTemplatesByCategory(category: TemplateCategory): WorkflowTemplate[] {
+  return TEMPLATES.filter((t) => t.category === category);
+}
+
+export function searchTemplates(query: string): WorkflowTemplate[] {
+  const q = query.toLowerCase().trim();
+  if (!q) return TEMPLATES;
+  return TEMPLATES.filter(
+    (t) =>
+      t.name.toLowerCase().includes(q) ||
+      t.description.toLowerCase().includes(q) ||
+      t.tags.some((tag) => tag.includes(q))
+  );
+}
+
+export function getTemplateById(id: string): WorkflowTemplate | undefined {
+  return TEMPLATES.find((t) => t.id === id);
+}
+
+export const CATEGORIES: { id: TemplateCategory; label: string; icon: string }[] = [
+  { id: 'payments', label: 'Payments', icon: '💸' },
+  { id: 'treasury', label: 'Treasury', icon: '🏦' },
+  { id: 'trading', label: 'Trading', icon: '📈' },
+  { id: 'automation', label: 'Automation', icon: '⚡' },
+];
