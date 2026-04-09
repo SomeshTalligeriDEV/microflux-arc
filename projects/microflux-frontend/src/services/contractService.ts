@@ -390,13 +390,25 @@ export interface DeployResult {
 
 /**
  * Deploy WorkflowExecutor from the browser using wallet signing.
- * Fetches compiled TEAL from /contracts/, compiles with algod, signs with wallet.
+ * Loads the pre-compiled ARC56 app spec with embedded bytecode.
  */
 export async function deployContract(
   senderAddress: string,
   signer: (txnGroup: algosdk.Transaction[], indexesToSign: number[]) => Promise<Uint8Array[]>,
 ): Promise<DeployResult> {
   try {
+    // Validate address
+    if (!senderAddress || typeof senderAddress !== 'string' || senderAddress.length < 50) {
+      return { appId: 0, txId: '', appAddress: '', success: false, error: 'Invalid sender address. Connect wallet first.' }
+    }
+
+    // Verify it's a valid Algorand address
+    try {
+      algosdk.decodeAddress(senderAddress)
+    } catch {
+      return { appId: 0, txId: '', appAddress: '', success: false, error: `Invalid Algorand address: ${senderAddress.slice(0, 10)}...` }
+    }
+
     console.log('[MICROFLUX Deploy] Starting deployment...')
     console.log(`[MICROFLUX Deploy] Sender: ${senderAddress}`)
 
@@ -409,48 +421,81 @@ export async function deployContract(
     ])
 
     if (!approvalResp.ok || !clearResp.ok) {
-      return { appId: 0, txId: '', appAddress: '', success: false, error: 'TEAL files not found. Run build first.' }
+      return { appId: 0, txId: '', appAddress: '', success: false, error: 'TEAL files not found in /contracts/. Run build first.' }
     }
 
     const approvalSource = await approvalResp.text()
     const clearSource = await clearResp.text()
 
-    console.log('[MICROFLUX Deploy] TEAL loaded. Compiling...')
+    console.log(`[MICROFLUX Deploy] TEAL loaded (${approvalSource.length} chars). Compiling via algod...`)
 
     // 2. Compile TEAL via algod
-    const approvalCompiled = await algod.compile(approvalSource).do()
-    const clearCompiled = await algod.compile(clearSource).do()
+    let approvalProgram: Uint8Array
+    let clearProgram: Uint8Array
 
-    const approvalProgram = new Uint8Array(Buffer.from(approvalCompiled.result, 'base64'))
-    const clearProgram = new Uint8Array(Buffer.from(clearCompiled.result, 'base64'))
+    try {
+      const approvalCompiled = await algod.compile(approvalSource).do()
+      const clearCompiled = await algod.compile(clearSource).do()
 
-    console.log('[MICROFLUX Deploy] Compiled. Building create transaction...')
+      // Convert base64 result to Uint8Array
+      const approvalB64 = approvalCompiled.result as string
+      const clearB64 = clearCompiled.result as string
+
+      approvalProgram = Uint8Array.from(atob(approvalB64), c => c.charCodeAt(0))
+      clearProgram = Uint8Array.from(atob(clearB64), c => c.charCodeAt(0))
+    } catch (compileErr) {
+      console.error('[MICROFLUX Deploy] Compile failed, trying ARC56 fallback...', compileErr)
+
+      // Fallback: try loading pre-compiled bytecode from ARC56 spec
+      try {
+        const arc56Resp = await fetch('/contracts/WorkflowExecutor.arc56.json')
+        if (!arc56Resp.ok) {
+          return { appId: 0, txId: '', appAddress: '', success: false,
+            error: 'TEAL compilation failed. Public algod nodes do not support compile. Use AlgoKit localnet or set ALGOD with compile support.' }
+        }
+        const arc56 = await arc56Resp.json()
+        const approvalB64 = arc56.source?.approval || arc56.byteCode?.approval
+        const clearB64 = arc56.source?.clear || arc56.byteCode?.clear
+
+        if (!approvalB64 || !clearB64) {
+          return { appId: 0, txId: '', appAddress: '', success: false,
+            error: 'No pre-compiled bytecode in ARC56 spec. Deploy with: algokit project run deploy' }
+        }
+
+        approvalProgram = Uint8Array.from(atob(approvalB64), c => c.charCodeAt(0))
+        clearProgram = Uint8Array.from(atob(clearB64), c => c.charCodeAt(0))
+        console.log('[MICROFLUX Deploy] Using pre-compiled bytecode from ARC56.')
+      } catch {
+        return { appId: 0, txId: '', appAddress: '', success: false,
+          error: 'TEAL compilation not supported on public nodes. Use: algokit project run deploy' }
+      }
+    }
+
+    console.log(`[MICROFLUX Deploy] Compiled. Approval: ${approvalProgram.length} bytes, Clear: ${clearProgram.length} bytes`)
 
     // 3. Build application create transaction
     const suggestedParams = await algod.getTransactionParams().do()
-
-    // Global state schema: 6 uints, 1 byte-slice
-    const globalInts = 5   // workflow_count, total_executions, last_execution_time, public_execution + creator
-    const globalBytes = 1  // last_workflow_hash
-    const localInts = 0
-    const localBytes = 0
 
     const txn = algosdk.makeApplicationCreateTxnFromObject({
       from: senderAddress,
       approvalProgram,
       clearProgram,
-      numGlobalByteSlices: globalBytes,
-      numGlobalInts: globalInts,
-      numLocalByteSlices: localBytes,
-      numLocalInts: localInts,
+      numGlobalByteSlices: 1,  // last_workflow_hash
+      numGlobalInts: 5,        // workflow_count, total_executions, last_execution_time, public_execution, creator
+      numLocalByteSlices: 0,
+      numLocalInts: 0,
       onComplete: algosdk.OnApplicationComplete.NoOpOC,
       suggestedParams,
     })
 
-    console.log('[MICROFLUX Deploy] Requesting wallet signature...')
+    console.log(`[MICROFLUX Deploy] Transaction built. Requesting wallet signature...`)
 
     // 4. Sign with wallet
     const signedTxns = await signer([txn], [0])
+
+    if (!signedTxns || signedTxns.length === 0 || !signedTxns[0]) {
+      return { appId: 0, txId: '', appAddress: '', success: false, error: 'Wallet did not return signed transaction' }
+    }
 
     // 5. Submit
     const { txId } = await algod.sendRawTransaction(signedTxns[0]).do()
@@ -461,13 +506,12 @@ export async function deployContract(
     const appId = result['application-index'] as number
     const appAddress = algosdk.getApplicationAddress(appId)
 
-    console.log(`[MICROFLUX Deploy] Deployed. App ID: ${appId}`)
-    console.log(`[MICROFLUX Deploy] App Address: ${appAddress}`)
+    console.log(`[MICROFLUX Deploy] SUCCESS. App ID: ${appId}, Address: ${appAddress}`)
 
     return { appId, txId, appAddress, success: true }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Deployment failed'
-    console.error('[MICROFLUX Deploy] Failed:', err)
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[MICROFLUX Deploy] Failed:', message)
 
     if (message.includes('cancelled') || message.includes('rejected') || message.includes('User refused')) {
       return { appId: 0, txId: '', appAddress: '', success: false, error: 'Deployment rejected by user' }
