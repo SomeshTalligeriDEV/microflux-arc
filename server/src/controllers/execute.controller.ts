@@ -1,7 +1,7 @@
-// src/controllers/execute.controller.ts
 import { Request, Response } from "express";
 import { getAssetPrice } from "../core/integrations/coingecko";
 import { executeSwap } from "../core/engine/folksRouter";
+import { sendTelegramAlert } from "../core/integrations/telegram";
 
 export const runWorkflow = async (req: Request, res: Response) => {
   try {
@@ -71,6 +71,20 @@ export const runWorkflow = async (req: Request, res: Response) => {
           // Store the prepared transaction in context to send back to the frontend
           context.preparedTransaction = swapData;
           console.log("💎 Swap transaction prepared for Pera Wallet signing.");
+          break;
+
+        case "SendTelegramNode":
+          const template =
+            node.data.messageTemplate || "Workflow executed successfully!";
+
+          // Replace placeholders if you have context data
+          const finalMessage = template.replace(
+            "{{price}}",
+            context.currentPrice?.toString() || "",
+          );
+
+          console.log(`🤖 Sending Telegram: ${finalMessage}`);
+          await sendTelegramAlert(finalMessage);
           break;
       }
     }
