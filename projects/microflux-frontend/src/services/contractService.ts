@@ -378,6 +378,104 @@ export async function genericAppCall(
   }
 }
 
+// ── Deploy Contract ──────────────────────────
+
+export interface DeployResult {
+  appId: number
+  txId: string
+  appAddress: string
+  success: boolean
+  error?: string
+}
+
+/**
+ * Deploy WorkflowExecutor from the browser using wallet signing.
+ * Fetches compiled TEAL from /contracts/, compiles with algod, signs with wallet.
+ */
+export async function deployContract(
+  senderAddress: string,
+  signer: (txnGroup: algosdk.Transaction[], indexesToSign: number[]) => Promise<Uint8Array[]>,
+): Promise<DeployResult> {
+  try {
+    console.log('[MICROFLUX Deploy] Starting deployment...')
+    console.log(`[MICROFLUX Deploy] Sender: ${senderAddress}`)
+
+    const algod = getAlgodClient()
+
+    // 1. Fetch TEAL source from public directory
+    const [approvalResp, clearResp] = await Promise.all([
+      fetch('/contracts/WorkflowExecutor.approval.teal'),
+      fetch('/contracts/WorkflowExecutor.clear.teal'),
+    ])
+
+    if (!approvalResp.ok || !clearResp.ok) {
+      return { appId: 0, txId: '', appAddress: '', success: false, error: 'TEAL files not found. Run build first.' }
+    }
+
+    const approvalSource = await approvalResp.text()
+    const clearSource = await clearResp.text()
+
+    console.log('[MICROFLUX Deploy] TEAL loaded. Compiling...')
+
+    // 2. Compile TEAL via algod
+    const approvalCompiled = await algod.compile(approvalSource).do()
+    const clearCompiled = await algod.compile(clearSource).do()
+
+    const approvalProgram = new Uint8Array(Buffer.from(approvalCompiled.result, 'base64'))
+    const clearProgram = new Uint8Array(Buffer.from(clearCompiled.result, 'base64'))
+
+    console.log('[MICROFLUX Deploy] Compiled. Building create transaction...')
+
+    // 3. Build application create transaction
+    const suggestedParams = await algod.getTransactionParams().do()
+
+    // Global state schema: 6 uints, 1 byte-slice
+    const globalInts = 5   // workflow_count, total_executions, last_execution_time, public_execution + creator
+    const globalBytes = 1  // last_workflow_hash
+    const localInts = 0
+    const localBytes = 0
+
+    const txn = algosdk.makeApplicationCreateTxnFromObject({
+      from: senderAddress,
+      approvalProgram,
+      clearProgram,
+      numGlobalByteSlices: globalBytes,
+      numGlobalInts: globalInts,
+      numLocalByteSlices: localBytes,
+      numLocalInts: localInts,
+      onComplete: algosdk.OnApplicationComplete.NoOpOC,
+      suggestedParams,
+    })
+
+    console.log('[MICROFLUX Deploy] Requesting wallet signature...')
+
+    // 4. Sign with wallet
+    const signedTxns = await signer([txn], [0])
+
+    // 5. Submit
+    const { txId } = await algod.sendRawTransaction(signedTxns[0]).do()
+    console.log(`[MICROFLUX Deploy] Submitted. TX: ${txId}`)
+
+    // 6. Wait for confirmation
+    const result = await algosdk.waitForConfirmation(algod, txId, 4)
+    const appId = result['application-index'] as number
+    const appAddress = algosdk.getApplicationAddress(appId)
+
+    console.log(`[MICROFLUX Deploy] Deployed. App ID: ${appId}`)
+    console.log(`[MICROFLUX Deploy] App Address: ${appAddress}`)
+
+    return { appId, txId, appAddress, success: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Deployment failed'
+    console.error('[MICROFLUX Deploy] Failed:', err)
+
+    if (message.includes('cancelled') || message.includes('rejected') || message.includes('User refused')) {
+      return { appId: 0, txId: '', appAddress: '', success: false, error: 'Deployment rejected by user' }
+    }
+    return { appId: 0, txId: '', appAddress: '', success: false, error: message }
+  }
+}
+
 // ── Explorer URLs ────────────────────────────
 
 export function getAppExplorerUrl(appId: number, network: string): string {

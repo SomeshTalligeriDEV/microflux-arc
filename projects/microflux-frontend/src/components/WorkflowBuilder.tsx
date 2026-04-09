@@ -18,6 +18,7 @@ import {
   getAppExplorerUrl,
   executeAtomicGroup,
   genericAppCall,
+  deployContract,
   type ContractState,
 } from '../services/contractService';
 import type { AINode, AIEdge } from '../services/aiService';
@@ -82,6 +83,8 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const [executionSuccess, setExecutionSuccess] = useState(false);
   const [lastTxId, setLastTxId] = useState<string | null>(null);
   const [useSmartContract, setUseSmartContract] = useState(true);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [deployedAppId, setDeployedAppId] = useState<number>(0);
 
   // Load contract state on mount
   useEffect(() => {
@@ -637,6 +640,29 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     nodeCounter.current = 3;
   }, [activeAddress]);
 
+  // Deploy contract from browser
+  const deployContractHandler = useCallback(async () => {
+    if (!activeAddress || !transactionSigner) return;
+    setIsDeploying(true);
+    try {
+      const result = await deployContract(
+        activeAddress,
+        transactionSigner as (txnGroup: unknown[], indexesToSign: number[]) => Promise<Uint8Array[]>,
+      );
+      if (result.success) {
+        setDeployedAppId(result.appId);
+        const state = await getContractState(result.appId);
+        if (state) setContractState(state);
+        alert(`Contract deployed. App ID: ${result.appId}\n\nAdd to .env:\nVITE_APP_ID=${result.appId}`);
+      } else {
+        alert(`Deployment failed: ${result.error}`);
+      }
+    } catch (err) {
+      alert(`Deployment error: ${err instanceof Error ? err.message : 'Unknown'}`);
+    }
+    setIsDeploying(false);
+  }, [activeAddress, transactionSigner]);
+
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
   return (
@@ -1023,20 +1049,30 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
               <div className="sim-row">
                 <span className="sim-label">App ID</span>
                 <span className="sim-value">
-                  {getAppId() > 0 ? (
+                  {(getAppId() > 0 || deployedAppId > 0) ? (
                     <a
-                      href={getAppExplorerUrl(getAppId(), networkName)}
+                      href={getAppExplorerUrl(deployedAppId || getAppId(), networkName)}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{ color: 'var(--color-accent)', fontWeight: 700 }}
                     >
-                      {getAppId()}
+                      {deployedAppId || getAppId()}
                     </a>
                   ) : (
                     <span style={{ color: 'var(--color-text-tertiary)' }}>Not deployed</span>
                   )}
                 </span>
               </div>
+              {getAppId() === 0 && deployedAppId === 0 && activeAddress && (
+                <button
+                  className="btn btn-outline btn-sm w-full"
+                  onClick={deployContractHandler}
+                  disabled={isDeploying}
+                  style={{ marginTop: '6px', marginBottom: '6px', fontSize: '0.65rem' }}
+                >
+                  {isDeploying ? 'DEPLOYING...' : 'DEPLOY CONTRACT'}
+                </button>
+              )}
               <div className="sim-row">
                 <span className="sim-label">Total Executions</span>
                 <span className="sim-value" style={{ fontWeight: 700, color: 'var(--color-success)' }}>

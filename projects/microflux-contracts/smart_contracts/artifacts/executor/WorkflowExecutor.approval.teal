@@ -1,0 +1,378 @@
+#pragma version 11
+#pragma typetrack false
+
+// algopy.arc4.ARC4Contract.approval_program() -> uint64:
+main:
+    intcblock 0 1 2
+    bytecblock "total_executions" 0x151f7c75 "creator" "workflow_count" "last_workflow_hash" "last_execution_time" "public_execution"
+    txn ApplicationID
+    bnz main_after_if_else@2
+    // smart_contracts/executor/contract.py:27
+    // self.creator = Global.creator_address
+    bytec_2 // "creator"
+    global CreatorAddress
+    app_global_put
+    // smart_contracts/executor/contract.py:28
+    // self.workflow_count = UInt64(0)
+    bytec_3 // "workflow_count"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/executor/contract.py:29
+    // self.total_executions = UInt64(0)
+    bytec_0 // "total_executions"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/executor/contract.py:30
+    // self.last_workflow_hash = Bytes(b"")
+    bytec 4 // "last_workflow_hash"
+    pushbytes 0x
+    app_global_put
+    // smart_contracts/executor/contract.py:31
+    // self.last_execution_time = UInt64(0)
+    bytec 5 // "last_execution_time"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/executor/contract.py:32
+    // self.public_execution = UInt64(0)
+    bytec 6 // "public_execution"
+    intc_0 // 0
+    app_global_put
+
+main_after_if_else@2:
+    // smart_contracts/executor/contract.py:20
+    // class WorkflowExecutor(ARC4Contract):
+    txn NumAppArgs
+    bz main___algopy_default_create@18
+    txn OnCompletion
+    !
+    assert
+    txn ApplicationID
+    assert
+    pushbytess 0x57c68b4e 0x94aee7d4 0xc3fbe2a2 0x3b51d8bc 0xc4355075 0xe1b1c8bc 0xead2df6f 0xa7804a9a 0x02bece11 // method "register_workflow(string)string", method "execute(string)string", method "set_public_execution(uint64)string", method "get_execution_count()uint64", method "get_workflow_count()uint64", method "get_last_execution_time()uint64", method "get_app_info()string", method "verify_hash(string)uint64", method "hello(string)string"
+    txna ApplicationArgs 0
+    match register_workflow execute set_public_execution get_execution_count get_workflow_count get_last_execution_time main_get_app_info_route@12 verify_hash hello
+    err
+
+main_get_app_info_route@12:
+    // smart_contracts/executor/contract.py:81
+    // @abimethod(readonly=True)
+    pushbytes 0x151f7c7500224d4943524f464c55582d583120576f726b666c6f774578656375746f722076312e30
+    log
+    intc_1 // 1
+    return
+
+main___algopy_default_create@18:
+    txn OnCompletion
+    !
+    txn ApplicationID
+    !
+    &&
+    return
+
+
+// smart_contracts.executor.contract.WorkflowExecutor.register_workflow[routing]() -> void:
+register_workflow:
+    // smart_contracts/executor/contract.py:34
+    // @abimethod()
+    txna ApplicationArgs 1
+    dup
+    intc_0 // 0
+    extract_uint16 // on error: invalid array length header
+    intc_2 // 2
+    +
+    dig 1
+    len
+    ==
+    assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
+    // smart_contracts/executor/contract.py:37
+    // assert Txn.sender == self.creator, "Only creator can register"
+    txn Sender
+    intc_0 // 0
+    bytec_2 // "creator"
+    app_global_get_ex
+    assert // check self.creator exists
+    ==
+    assert // Only creator can register
+    // smart_contracts/executor/contract.py:38
+    // self.workflow_count += 1
+    intc_0 // 0
+    bytec_3 // "workflow_count"
+    app_global_get_ex
+    assert // check self.workflow_count exists
+    intc_1 // 1
+    +
+    bytec_3 // "workflow_count"
+    swap
+    app_global_put
+    // smart_contracts/executor/contract.py:39
+    // self.last_workflow_hash = workflow_hash.bytes
+    bytec 4 // "last_workflow_hash"
+    dig 1
+    app_global_put
+    // smart_contracts/executor/contract.py:40
+    // log(b"WORKFLOW_REGISTERED")
+    pushbytes 0x574f524b464c4f575f52454749535445524544
+    log
+    // smart_contracts/executor/contract.py:41
+    // log(workflow_hash.bytes)
+    log
+    // smart_contracts/executor/contract.py:34
+    // @abimethod()
+    pushbytes 0x151f7c750013576f726b666c6f772072656769737465726564
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.executor.contract.WorkflowExecutor.execute[routing]() -> void:
+execute:
+    // smart_contracts/executor/contract.py:44
+    // @abimethod()
+    txna ApplicationArgs 1
+    dupn 2
+    intc_0 // 0
+    extract_uint16 // on error: invalid array length header
+    intc_2 // 2
+    +
+    swap
+    len
+    ==
+    assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
+    // smart_contracts/executor/contract.py:47
+    // if self.public_execution == UInt64(0):
+    intc_0 // 0
+    bytec 6 // "public_execution"
+    app_global_get_ex
+    assert // check self.public_execution exists
+    bnz execute_after_if_else@3
+    // smart_contracts/executor/contract.py:48
+    // assert Txn.sender == self.creator, "Public execution disabled"
+    txn Sender
+    intc_0 // 0
+    bytec_2 // "creator"
+    app_global_get_ex
+    assert // check self.creator exists
+    ==
+    assert // Public execution disabled
+
+execute_after_if_else@3:
+    // smart_contracts/executor/contract.py:49
+    // self.total_executions += 1
+    intc_0 // 0
+    bytec_0 // "total_executions"
+    app_global_get_ex
+    assert // check self.total_executions exists
+    intc_1 // 1
+    +
+    bytec_0 // "total_executions"
+    swap
+    app_global_put
+    // smart_contracts/executor/contract.py:50
+    // self.last_workflow_hash = workflow_hash.bytes
+    bytec 4 // "last_workflow_hash"
+    dig 1
+    dup
+    cover 2
+    app_global_put
+    // smart_contracts/executor/contract.py:51
+    // self.last_execution_time = Global.latest_timestamp
+    bytec 5 // "last_execution_time"
+    global LatestTimestamp
+    app_global_put
+    // smart_contracts/executor/contract.py:52
+    // log(b"WORKFLOW_EXECUTED")
+    pushbytes 0x574f524b464c4f575f4558454355544544
+    log
+    // smart_contracts/executor/contract.py:53
+    // log(workflow_hash.bytes)
+    log
+    // smart_contracts/executor/contract.py:54
+    // log(op.itob(self.total_executions))
+    intc_0 // 0
+    bytec_0 // "total_executions"
+    app_global_get_ex
+    assert // check self.total_executions exists
+    itob
+    log
+    // smart_contracts/executor/contract.py:44
+    // @abimethod()
+    pushbytes 0x151f7c7500154578656375746564207375636365737366756c6c79
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.executor.contract.WorkflowExecutor.set_public_execution[routing]() -> void:
+set_public_execution:
+    // smart_contracts/executor/contract.py:57
+    // @abimethod()
+    txna ApplicationArgs 1
+    dup
+    len
+    pushint 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/executor/contract.py:60
+    // assert Txn.sender == self.creator, "Only creator can change settings"
+    txn Sender
+    intc_0 // 0
+    bytec_2 // "creator"
+    app_global_get_ex
+    assert // check self.creator exists
+    ==
+    assert // Only creator can change settings
+    // smart_contracts/executor/contract.py:61
+    // self.public_execution = enabled
+    bytec 6 // "public_execution"
+    dig 1
+    app_global_put
+    // smart_contracts/executor/contract.py:62
+    // if enabled == UInt64(1):
+    intc_1 // 1
+    ==
+    bz set_public_execution_after_if_else@3
+    // smart_contracts/executor/contract.py:63
+    // return arc4String("Public execution enabled")
+    pushbytes 0x00185075626c696320657865637574696f6e20656e61626c6564
+
+set_public_execution_after_inlined_smart_contracts.executor.contract.WorkflowExecutor.set_public_execution@4:
+    // smart_contracts/executor/contract.py:57
+    // @abimethod()
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+set_public_execution_after_if_else@3:
+    // smart_contracts/executor/contract.py:64
+    // return arc4String("Public execution disabled")
+    pushbytes 0x00195075626c696320657865637574696f6e2064697361626c6564
+    // smart_contracts/executor/contract.py:57
+    // @abimethod()
+    b set_public_execution_after_inlined_smart_contracts.executor.contract.WorkflowExecutor.set_public_execution@4
+
+
+// smart_contracts.executor.contract.WorkflowExecutor.get_execution_count[routing]() -> void:
+get_execution_count:
+    // smart_contracts/executor/contract.py:69
+    // return self.total_executions
+    intc_0 // 0
+    bytec_0 // "total_executions"
+    app_global_get_ex
+    assert // check self.total_executions exists
+    // smart_contracts/executor/contract.py:66
+    // @abimethod(readonly=True)
+    itob
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.executor.contract.WorkflowExecutor.get_workflow_count[routing]() -> void:
+get_workflow_count:
+    // smart_contracts/executor/contract.py:74
+    // return self.workflow_count
+    intc_0 // 0
+    bytec_3 // "workflow_count"
+    app_global_get_ex
+    assert // check self.workflow_count exists
+    // smart_contracts/executor/contract.py:71
+    // @abimethod(readonly=True)
+    itob
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.executor.contract.WorkflowExecutor.get_last_execution_time[routing]() -> void:
+get_last_execution_time:
+    // smart_contracts/executor/contract.py:79
+    // return self.last_execution_time
+    intc_0 // 0
+    bytec 5 // "last_execution_time"
+    app_global_get_ex
+    assert // check self.last_execution_time exists
+    // smart_contracts/executor/contract.py:76
+    // @abimethod(readonly=True)
+    itob
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.executor.contract.WorkflowExecutor.verify_hash[routing]() -> void:
+verify_hash:
+    // smart_contracts/executor/contract.py:86
+    // @abimethod(readonly=True)
+    txna ApplicationArgs 1
+    dup
+    intc_0 // 0
+    extract_uint16 // on error: invalid array length header
+    intc_2 // 2
+    +
+    dig 1
+    len
+    ==
+    assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
+    // smart_contracts/executor/contract.py:89
+    // if self.last_workflow_hash == workflow_hash.bytes:
+    intc_0 // 0
+    bytec 4 // "last_workflow_hash"
+    app_global_get_ex
+    assert // check self.last_workflow_hash exists
+    ==
+    bz verify_hash_after_if_else@3
+    // smart_contracts/executor/contract.py:90
+    // return UInt64(1)
+    intc_1 // 1
+
+verify_hash_after_inlined_smart_contracts.executor.contract.WorkflowExecutor.verify_hash@4:
+    // smart_contracts/executor/contract.py:86
+    // @abimethod(readonly=True)
+    itob
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+verify_hash_after_if_else@3:
+    // smart_contracts/executor/contract.py:91
+    // return UInt64(0)
+    intc_0 // 0
+    // smart_contracts/executor/contract.py:86
+    // @abimethod(readonly=True)
+    b verify_hash_after_inlined_smart_contracts.executor.contract.WorkflowExecutor.verify_hash@4
+
+
+// smart_contracts.executor.contract.WorkflowExecutor.hello[routing]() -> void:
+hello:
+    // smart_contracts/executor/contract.py:93
+    // @abimethod()
+    txna ApplicationArgs 1
+    dup
+    intc_0 // 0
+    extract_uint16 // on error: invalid array length header
+    intc_2 // 2
+    +
+    swap
+    len
+    ==
+    assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
+    pushbytes 0x151f7c75001748656c6c6f2066726f6d204d4943524f464c55582d5831
+    log
+    intc_1 // 1
+    return
