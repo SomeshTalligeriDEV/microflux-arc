@@ -551,13 +551,73 @@ textarea.input {
   z-index: 2;
 }
 
-.hero-subtitle {
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.05); /* Faint static border */
+  border-radius: var(--radius-full);
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin-bottom: var(--space-4);
+  color: var(--color-text-primary);
+  letter-spacing: 0.02em;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: var(--space-6);
+  z-index: 1; /* For stacking pseudo-elements */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* The rotating conic gradient mask for the crystal edge effect */
+.hero-badge::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 600px;
+  height: 600px;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    transparent 120deg,
+    rgba(255, 255, 255, 0.9) 180deg,
+    transparent 240deg,
+    transparent 360deg
+  );
+  animation: rotateCrystal 4s linear infinite;
+  z-index: -2;
+  pointer-events: none;
+}
+
+/* Inner pill that hollows out the animated gradient, leaving a 1px border */
+.hero-badge::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  background: #0d0d0d; /* Opaque dark background */
+  border-radius: inherit;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.hero-badge-icon {
+  font-size: 1.1em;
+  line-height: 1;
+  position: relative;
+  z-index: 2; /* Keep above the dark background layer */
+}
+
+/* Keep text above the inner dark layer */
+.hero-badge > span {
+  position: relative;
+  z-index: 2;
+}
+
+@keyframes rotateCrystal {
+  0% { transform: translate(-50%, -50%) rotate(0deg); }
+  100% { transform: translate(-50%, -50%) rotate(360deg); }
 }
 
 .hero-title {
