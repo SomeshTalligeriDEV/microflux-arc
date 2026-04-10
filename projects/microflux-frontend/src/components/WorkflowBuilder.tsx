@@ -765,7 +765,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   return (
     <div className="workspace-layout">
       {/* ── Left Sidebar: Node Palette ────── */}
-      <div className="sidebar">
+      <div className="sidebar" style={{ userSelect: 'none', WebkitUserSelect: 'none' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)' }}>
           <div className="text-sm font-bold text-uppercase" style={{ letterSpacing: '0.06em' }}>
             {workflowName || 'NODE PALETTE'}
@@ -786,6 +786,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                 <div
                   key={def.type}
                   className="node-item"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => addNode(def)}
                 >
                   <div
