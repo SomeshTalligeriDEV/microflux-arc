@@ -18,6 +18,13 @@ export interface LinkStatus {
   nfd?: string | null;
 }
 
+export interface TelegramLinkResponse {
+  success: boolean;
+  walletAddress: string;
+  linkCode: string;
+  command: string;
+}
+
 async function readJsonOrThrow<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text();
@@ -27,6 +34,17 @@ async function readJsonOrThrow<T>(res: Response): Promise<T> {
 }
 
 export const api = {
+  // Generate a one-time Telegram link command
+  generateTelegramLink: async (walletAddress: string): Promise<TelegramLinkResponse> => {
+    const res = await fetch(`${BASE_URL}/user/generate-link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletAddress }),
+    });
+
+    return readJsonOrThrow<TelegramLinkResponse>(res);
+  },
+
   // Check if Telegram is linked
   getLinkStatus: async (walletAddress: string): Promise<LinkStatus> => {
     const res = await fetch(`${BASE_URL}/user/${walletAddress}`);

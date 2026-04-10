@@ -1,26 +1,47 @@
 import { Request, Response } from 'express';
 import { prisma } from '../exports/prisma';
 
-export const generateTelegramLink = async (req: Request, res: Response) => {
-  const { walletAddress, linkCode } = req.body;
+const normalizeWallet = (walletAddress?: string) => String(walletAddress || '').trim().toUpperCase();
 
-  if (!walletAddress || !linkCode) {
-    return res.status(400).json({ error: 'Missing wallet or code' });
+const generateLinkCode = (): string => {
+  // 4 random chars gives ~1.6M combinations while keeping UX short.
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const randomBytes = new Uint8Array(4);
+  crypto.getRandomValues(randomBytes);
+  const suffix = Array.from(randomBytes)
+    .map((value) => alphabet[value % alphabet.length])
+    .join('');
+  return `MFX-${suffix}`;
+};
+
+export const generateTelegramLink = async (req: Request, res: Response) => {
+  const { walletAddress } = req.body as { walletAddress?: string };
+  const normalizedWallet = normalizeWallet(walletAddress);
+
+  if (!normalizedWallet) {
+    return res.status(400).json({ error: 'walletAddress is required' });
   }
 
   try {
+    const linkCode = generateLinkCode();
+
     // Upsert ensures that if the user doesn't exist yet, it creates them.
     // If they do exist, it just updates their temporary link code.
-    const user = await prisma.user.upsert({
-      where: { walletAddress },
+    await prisma.user.upsert({
+      where: { walletAddress: normalizedWallet },
       update: { linkCode },
       create: { 
-        walletAddress, 
+        walletAddress: normalizedWallet,
         linkCode 
       }
     });
 
-    res.status(200).json({ success: true, user });
+    res.status(200).json({
+      success: true,
+      walletAddress: normalizedWallet,
+      linkCode,
+      command: `/link ${linkCode}`,
+    });
   } catch (error) {
     const err = error as { code?: string; message?: string; meta?: unknown; cause?: unknown };
     console.error("DB Error generating link:", {
@@ -35,7 +56,7 @@ export const generateTelegramLink = async (req: Request, res: Response) => {
 };
 
 export const getUserStatus = async (req: Request, res: Response) => {
-  const walletAddress = String(req.params.walletAddress || '').trim();
+  const walletAddress = normalizeWallet(String(req.params.walletAddress || ''));
 
   if (!walletAddress) {
     return res.status(400).json({ error: 'walletAddress is required' });

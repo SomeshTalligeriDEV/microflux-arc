@@ -12,6 +12,7 @@ import { fetchAccountBalance } from './services/walletService';
 import { getAlgodConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs';
 import { api, type Workflow } from './services/api';
 import SavedWorkflows from './components/SavedWorkflows';
+import TelegramLinkPanel from './components/TelegramLinkPanel';
 
 const Home: React.FC = () => {
   const [currentPage, setCurrentPage] = useState('home');
@@ -55,6 +56,21 @@ const Home: React.FC = () => {
         console.warn('[MICROFLUX] Failed to fetch Telegram link status', error);
         setIsLinked(false);
       });
+  }, [activeAddress]);
+
+  const refreshLinkStatus = useCallback(async () => {
+    if (!activeAddress) {
+      setIsLinked(false);
+      return;
+    }
+
+    try {
+      const data = await api.getLinkStatus(activeAddress);
+      setIsLinked(Boolean(data.linked));
+    } catch (error) {
+      console.warn('[MICROFLUX] Failed to refresh Telegram link status', error);
+      setIsLinked(false);
+    }
   }, [activeAddress]);
 
   const handleNavigate = useCallback((page: string) => {
@@ -159,7 +175,18 @@ const Home: React.FC = () => {
           />
         );
       default:
-        return <HeroSection onNavigate={handleNavigate} />;
+        return (
+          <>
+            <HeroSection onNavigate={handleNavigate} />
+            <div className="page-container" style={{ paddingTop: '0' }}>
+              <TelegramLinkPanel
+                activeAddress={activeAddress ?? null}
+                isLinked={isLinked}
+                onRefreshLinkStatus={refreshLinkStatus}
+              />
+            </div>
+          </>
+        );
     }
   };
 

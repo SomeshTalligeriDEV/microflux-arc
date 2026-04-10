@@ -19,7 +19,7 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
 
     // ── /link CODE flow ─────────────────────
     if (userText.toLowerCase().startsWith('/link ')) {
-      const linkCode = userText.slice(6).trim();
+      const linkCode = userText.slice(6).trim().toUpperCase();
       if (!linkCode) {
         await sendTelegramMessage(chatId, '❌ Missing link code. Usage: /link MFX-XXXX');
         return res.sendStatus(200);
@@ -27,7 +27,7 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
 
       const user = await prisma.user.findUnique({ where: { linkCode } });
       if (!user) {
-        await sendTelegramMessage(chatId, '❌ Invalid or expired link code. Please generate a new one in MicroFlux.');
+        await sendTelegramMessage(chatId, '❌ Invalid or expired link code.');
         return res.sendStatus(200);
       }
 
@@ -43,7 +43,7 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
 
       await sendTelegramMessage(
         chatId,
-        `✅ Telegram linked successfully.\nWallet: ${updated.walletAddress}\nNFD: ${updated.nfd ?? 'Not set'}`,
+        `✅ Wallet successfully linked!\nWallet: ${updated.walletAddress}\nNFD: ${updated.nfd ?? 'Not set'}`,
       );
       return res.sendStatus(200);
     }
