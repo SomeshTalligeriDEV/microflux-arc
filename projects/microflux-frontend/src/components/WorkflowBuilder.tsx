@@ -1,4 +1,23 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import ReactFlow, {
+  Background,
+  BackgroundVariant,
+  Controls,
+  Handle,
+  MarkerType,
+  MiniMap,
+  Position,
+  type Connection,
+  type Edge,
+  type EdgeChange,
+  type Node,
+  type NodeChange,
+  type NodeProps,
+  addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
+} from 'reactflow';
+import 'reactflow/dist/style.css';
 import {
   NODE_DEFINITIONS,
   getNodesByCategory,
@@ -21,6 +40,7 @@ import {
   deployContract,
   type ContractState,
 } from '../services/contractService';
+import AICopilotPanel from './AICopilotPanel';
 import type { AINode, AIEdge } from '../services/aiService';
 
 // Execution modes
@@ -46,6 +66,63 @@ interface CanvasEdgeData {
   target: string;
 }
 
+const MicrofluxNode: React.FC<NodeProps<CanvasNodeData>> = ({ data, selected }) => {
+  const isTrigger = data.category === 'trigger';
+
+  return (
+    <div className={`microflux-node microflux-node-${data.category} ${selected ? 'is-selected' : ''}`}>
+      {!isTrigger && (
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="microflux-handle microflux-handle-input"
+        />
+      )}
+
+      <div className="microflux-node__header" style={{ borderLeftColor: data.color }}>
+        <span className="microflux-node__icon">{data.icon}</span>
+        <span className="microflux-node__title">{data.label}</span>
+        {!data.isReal && <span className="tag tag-sm tag-mock microflux-node__tag">MOCK</span>}
+      </div>
+
+      <div className="microflux-node__body">
+        <div className="microflux-node__type">{data.type}</div>
+        {data.type === 'send_payment' && (
+          <div className="microflux-node__meta">{(data.config.amount as number) / 1000000} ALGO</div>
+        )}
+        {data.type === 'asa_transfer' && (
+          <div className="microflux-node__meta">ASA #{String(data.config.asset_id ?? 0)}</div>
+        )}
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="microflux-handle microflux-handle-output"
+      />
+    </div>
+  );
+};
+
+const nodeTypes = { microfluxNode: MicrofluxNode };
+
+const toFlowNode = (node: CanvasNodeData): Node<CanvasNodeData> => ({
+  id: node.id,
+  type: 'microfluxNode',
+  position: node.position,
+  data: node,
+});
+
+const toFlowEdge = (edge: CanvasEdgeData): Edge => ({
+  id: edge.id,
+  source: edge.source,
+  target: edge.target,
+  type: 'smoothstep',
+  animated: true,
+  style: { stroke: 'rgba(56, 189, 248, 0.55)', strokeWidth: 2 },
+  markerEnd: { type: MarkerType.ArrowClosed, color: 'rgba(56, 189, 248, 0.55)' },
+});
+
 interface WorkflowBuilderProps {
   initialNodes?: AINode[];
   initialEdges?: AIEdge[];
@@ -67,6 +144,8 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   networkName = 'localnet',
   onBalanceUpdate,
 }) => {
+  const [activeRightTab, setActiveRightTab] = useState<'properties' | 'simulate' | 'ai'>('properties');
+  const [groqApiKey, setGroqApiKey] = useState(import.meta.env.VITE_GROQ_API_KEY || '');
   const [nodes, setNodes] = useState<CanvasNodeData[]>([]);
   const [edges, setEdges] = useState<CanvasEdgeData[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -85,6 +164,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const [useSmartContract, setUseSmartContract] = useState(true);
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployedAppId, setDeployedAppId] = useState<number>(0);
+  const [viewportInitialized, setViewportInitialized] = useState(false);
 
   // Load contract state on mount
   useEffect(() => {
@@ -99,9 +179,33 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     setExecutionMode(useSmartContract ? 'atomic' : 'direct');
   }, [useSmartContract]);
 
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
   const nodeCounter = useRef(0);
+
+  // Load workflow generated inside right-panel AI tab directly into this canvas
+  const handleLoadWorkflowFromAi = useCallback((aiNodes: AINode[], aiEdges: AIEdge[]) => {
+    const canvasNodes: CanvasNodeData[] = aiNodes.map((n) => {
+      const def = NODE_DEFINITIONS.find((d) => d.type === n.type);
+      return {
+        id: n.id,
+        type: n.type,
+        label: n.label,
+        category: n.category as NodeCategory,
+        config: n.config,
+        position: n.position,
+        icon: def?.icon ?? '▪',
+        color: def?.color ?? '#666',
+        isReal: def?.isReal ?? false,
+      };
+    });
+
+    setNodes(canvasNodes);
+    setEdges(aiEdges.map((e) => ({ id: e.id, source: e.source, target: e.target })));
+    setSelectedNodeId(null);
+    setSimResults([]);
+    setExecutionLog([]);
+    setExecutionSuccess(false);
+    nodeCounter.current = canvasNodes.length;
+  }, []);
 
   // Load initial nodes from AI or templates
   useEffect(() => {
@@ -125,6 +229,50 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       nodeCounter.current = canvasNodes.length;
     }
   }, [initialNodes, initialEdges]);
+
+  const flowNodes = useMemo(() => nodes.map(toFlowNode), [nodes]);
+  const flowEdges = useMemo(() => edges.map(toFlowEdge), [edges]);
+
+  const handleNodesChange = useCallback((changes: NodeChange[]) => {
+    setNodes((currentNodes) => {
+      const updated = applyNodeChanges(changes, currentNodes.map(toFlowNode));
+      return updated.map((node) => ({
+        ...(node.data as CanvasNodeData),
+        position: node.position,
+      }));
+    });
+  }, []);
+
+  const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
+    setEdges((currentEdges) => {
+      const updated = applyEdgeChanges(changes, currentEdges.map(toFlowEdge));
+      return updated.map((edge) => ({
+        id: edge.id,
+        source: String(edge.source ?? ''),
+        target: String(edge.target ?? ''),
+      }));
+    });
+  }, []);
+
+  const handleConnect = useCallback((connection: Connection) => {
+    if (!connection.source || !connection.target) return;
+
+    setEdges((currentEdges) => {
+      const exists = currentEdges.some(
+        (edge) => edge.source === connection.source && edge.target === connection.target,
+      );
+      if (exists) return currentEdges;
+
+      return [
+        ...currentEdges,
+        {
+          id: `edge_${Date.now()}`,
+          source: connection.source,
+          target: connection.target,
+        },
+      ];
+    });
+  }, []);
 
   // Add node from palette
   const addNode = useCallback((def: NodeDefinition) => {
@@ -151,57 +299,6 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     setEdges((prev) => prev.filter((e) => e.source !== nodeId && e.target !== nodeId));
     if (selectedNodeId === nodeId) setSelectedNodeId(null);
   }, [selectedNodeId]);
-
-  // Mouse handlers for node dragging
-  const handleNodeMouseDown = (e: React.MouseEvent, nodeId: string) => {
-    e.stopPropagation();
-    const node = nodes.find((n) => n.id === nodeId);
-    if (!node) return;
-
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    setDraggingNodeId(nodeId);
-    setDragOffset({
-      x: e.clientX - rect.left - node.position.x,
-      y: e.clientY - rect.top - node.position.y,
-    });
-    setSelectedNodeId(nodeId);
-  };
-
-  const handleCanvasMouseMove = (e: React.MouseEvent) => {
-    if (!draggingNodeId) return;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    const newX = e.clientX - rect.left - dragOffset.x;
-    const newY = e.clientY - rect.top - dragOffset.y;
-
-    setNodes((prev) =>
-      prev.map((n) =>
-        n.id === draggingNodeId ? { ...n, position: { x: Math.max(0, newX), y: Math.max(0, newY) } } : n
-      )
-    );
-  };
-
-  const handleCanvasMouseUp = () => {
-    setDraggingNodeId(null);
-  };
-
-  // Port connection handlers
-  const handlePortClick = (nodeId: string, isOutput: boolean) => {
-    if (isOutput) {
-      setConnectingFrom(nodeId);
-    } else if (connectingFrom && connectingFrom !== nodeId) {
-      // Check for duplicate edges
-      const exists = edges.some((e) => e.source === connectingFrom && e.target === nodeId);
-      if (!exists) {
-        const edgeId = `edge_${Date.now()}`;
-        setEdges((prev) => [...prev, { id: edgeId, source: connectingFrom, target: nodeId }]);
-      }
-      setConnectingFrom(null);
-    }
-  };
 
   // Simulate workflow
   const simulateWorkflow = useCallback(async () => {
@@ -719,135 +816,68 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       </div>
 
       {/* ── Canvas ────────────────────────── */}
-      <div
-        className="canvas-container"
-        ref={canvasRef}
-        onMouseMove={handleCanvasMouseMove}
-        onMouseUp={handleCanvasMouseUp}
-        onClick={() => {
-          setSelectedNodeId(null);
-          setConnectingFrom(null);
-        }}
-      >
-        {/* SVG for edges */}
-        <svg
-          ref={svgRef}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+      <div className="canvas-container canvas-container-reactflow">
+        <ReactFlow
+          className="microflux-reactflow"
+          nodes={flowNodes}
+          edges={flowEdges}
+          nodeTypes={nodeTypes}
+          onNodesChange={handleNodesChange}
+          onEdgesChange={handleEdgesChange}
+          onConnect={handleConnect}
+          onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+          onSelectionChange={({ nodes: selectedFlowNodes }) => {
+            setSelectedNodeId(selectedFlowNodes[0]?.id ?? null);
+          }}
+          onPaneClick={() => setSelectedNodeId(null)}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
+          snapToGrid
+          snapGrid={[20, 20]}
+          deleteKeyCode={null}
+          minZoom={0.35}
+          maxZoom={1.6}
+          defaultEdgeOptions={{
+            type: 'smoothstep',
+            animated: true,
+            style: { stroke: 'rgba(56, 189, 248, 0.55)', strokeWidth: 2 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: 'rgba(56, 189, 248, 0.55)' },
+          }}
+          proOptions={{ hideAttribution: true }}
+          nodesDraggable
+          nodesConnectable
+          elementsSelectable
+          panOnScroll
+          selectionOnDrag
+          onMoveEnd={() => setViewportInitialized(true)}
         >
-          {edges.map((edge) => {
-            const src = nodes.find((n) => n.id === edge.source);
-            const tgt = nodes.find((n) => n.id === edge.target);
-            if (!src || !tgt) return null;
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={22}
+            size={1}
+            color="rgba(255, 255, 255, 0.06)"
+          />
+          <Controls
+            showInteractive={false}
+            className="microflux-flow-controls"
+          />
+          <MiniMap
+            pannable
+            zoomable
+            nodeStrokeWidth={2}
+            nodeColor={(node) => node.data.color}
+            maskColor="rgba(6, 8, 12, 0.72)"
+            className="microflux-flow-minimap"
+          />
+        </ReactFlow>
 
-            const x1 = src.position.x + 200;
-            const y1 = src.position.y + 25;
-            const x2 = tgt.position.x;
-            const y2 = tgt.position.y + 25;
-            const mx = (x1 + x2) / 2;
-
-            return (
-              <path
-                key={edge.id}
-                d={`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`}
-                className="connection-line"
-                style={{ pointerEvents: 'stroke' }}
-              />
-            );
-          })}
-        </svg>
-
-        {/* Canvas Nodes */}
-        {nodes.map((node) => (
-          <div
-            key={node.id}
-            className={`canvas-node ${selectedNodeId === node.id ? 'selected' : ''}`}
-            style={{
-              left: node.position.x,
-              top: node.position.y,
-            }}
-            onMouseDown={(e) => handleNodeMouseDown(e, node.id)}
-            onClick={(e) => {
-              e.stopPropagation();
-              setSelectedNodeId(node.id);
-            }}
-          >
-            {/* Input Port */}
-            {node.category !== 'trigger' && (
-              <div
-                className="canvas-node-port port-input"
-                style={{ background: connectingFrom ? 'var(--color-accent)' : 'var(--color-border)' }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handlePortClick(node.id, false);
-                }}
-              />
-            )}
-
-            {/* Header */}
-            <div className="canvas-node-header" style={{ borderLeftColor: node.color }}>
-              <span style={{ fontSize: '14px' }}>{node.icon}</span>
-              <span style={{ flex: 1 }}>{node.label}</span>
-              {!node.isReal && (
-                <span className="tag tag-sm tag-mock" style={{ fontSize: '0.55rem', padding: '1px 4px' }}>
-                  MOCK
-                </span>
-              )}
-            </div>
-
-            {/* Body */}
-            <div className="canvas-node-body">
-              <div className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--color-text-tertiary)' }}>
-                {node.type}
-              </div>
-              {node.type === 'send_payment' && (
-                <div style={{ marginTop: '4px', color: 'var(--color-text-secondary)' }}>
-                  {(node.config.amount as number) / 1000000} ALGO
-                </div>
-              )}
-            </div>
-
-            {/* Output Port */}
-            <div
-              className="canvas-node-port port-output"
-              style={{ background: connectingFrom === node.id ? 'var(--color-accent)' : 'var(--color-border)' }}
-              onClick={(e) => {
-                e.stopPropagation();
-                handlePortClick(node.id, true);
-              }}
-            />
-          </div>
-        ))}
-
-        {/* Empty State */}
         {nodes.length === 0 && (
-          <div className="empty-state" style={{ height: '100%' }}>
+          <div className="empty-state microflux-flow-empty" style={{ height: '100%' }}>
             <div className="empty-state-icon">⬡</div>
             <div className="empty-state-title">Empty Canvas</div>
             <div className="empty-state-desc">
               Click nodes from the palette or use AI to generate a workflow
             </div>
-          </div>
-        )}
-
-        {/* Connection Mode Indicator */}
-        {connectingFrom && (
-          <div style={{
-            position: 'absolute',
-            bottom: '16px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            padding: '8px 16px',
-            background: 'var(--color-accent)',
-            color: 'white',
-            borderRadius: 'var(--radius-full)',
-            fontSize: 'var(--text-xs)',
-            fontWeight: 700,
-            letterSpacing: '0.04em',
-            textTransform: 'uppercase',
-            boxShadow: 'var(--shadow-glow)',
-            zIndex: 10,
-          }}>
-            Click an input port to connect
           </div>
         )}
       </div>
@@ -856,12 +886,35 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       <div className="right-panel">
         {/* Panel Tabs */}
         <div className="tabs">
-          <button className="tab active">Properties</button>
-          <button className="tab">Simulate</button>
+          <button
+            className={`tab ${activeRightTab === 'properties' ? 'active' : ''}`}
+            onClick={() => setActiveRightTab('properties')}
+          >
+            Properties
+          </button>
+          <button
+            className={`tab ${activeRightTab === 'simulate' ? 'active' : ''}`}
+            onClick={() => setActiveRightTab('simulate')}
+          >
+            Simulate
+          </button>
+          <button
+            className={`tab ${activeRightTab === 'ai' ? 'active' : ''}`}
+            onClick={() => setActiveRightTab('ai')}
+          >
+            AI Copilot
+          </button>
         </div>
 
-        {/* Node Properties */}
-        {selectedNode ? (
+        {activeRightTab === 'ai' ? (
+          <div className="panel-body animate-fadeIn">
+            <AICopilotPanel
+              onLoadWorkflow={(aiNodes, aiEdges) => handleLoadWorkflowFromAi(aiNodes, aiEdges)}
+              groqApiKey={groqApiKey}
+              onApiKeyChange={setGroqApiKey}
+            />
+          </div>
+        ) : selectedNode ? (
           <div className="panel-body animate-fadeIn">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div>

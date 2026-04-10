@@ -14,6 +14,7 @@ AVAILABLE NODE TYPES:
 RULES:
 1. Always calculate logical x and y coordinates for the nodes so they layout horizontally (e.g., x: 0, 250, 500).
 2. Create edges to connect the nodes in logical execution order.
+3. TELEGRAM COMMANDS: If the user explicitly asks to send or transfer funds (e.g., "Send 1 ALGO to [Address]"), you MUST output a send_payment node where config.amount is the number requested, and config.receiver is the address.
 
 EXPECTED JSON OUTPUT FORMAT:
 {
