@@ -21,6 +21,7 @@ import {
   deployContract,
   type ContractState,
 } from '../services/contractService';
+import AICopilotPanel from './AICopilotPanel';
 import type { AINode, AIEdge } from '../services/aiService';
 
 // Execution modes
@@ -67,6 +68,8 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   networkName = 'localnet',
   onBalanceUpdate,
 }) => {
+  const [activeRightTab, setActiveRightTab] = useState<'properties' | 'simulate' | 'ai'>('properties');
+  const [groqApiKey, setGroqApiKey] = useState(import.meta.env.VITE_GROQ_API_KEY || '');
   const [nodes, setNodes] = useState<CanvasNodeData[]>([]);
   const [edges, setEdges] = useState<CanvasEdgeData[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -102,6 +105,32 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const canvasRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const nodeCounter = useRef(0);
+
+  // Load workflow generated inside right-panel AI tab directly into this canvas
+  const handleLoadWorkflowFromAi = useCallback((aiNodes: AINode[], aiEdges: AIEdge[]) => {
+    const canvasNodes: CanvasNodeData[] = aiNodes.map((n) => {
+      const def = NODE_DEFINITIONS.find((d) => d.type === n.type);
+      return {
+        id: n.id,
+        type: n.type,
+        label: n.label,
+        category: n.category as NodeCategory,
+        config: n.config,
+        position: n.position,
+        icon: def?.icon ?? '▪',
+        color: def?.color ?? '#666',
+        isReal: def?.isReal ?? false,
+      };
+    });
+
+    setNodes(canvasNodes);
+    setEdges(aiEdges.map((e) => ({ id: e.id, source: e.source, target: e.target })));
+    setSelectedNodeId(null);
+    setSimResults([]);
+    setExecutionLog([]);
+    setExecutionSuccess(false);
+    nodeCounter.current = canvasNodes.length;
+  }, []);
 
   // Load initial nodes from AI or templates
   useEffect(() => {
@@ -856,12 +885,35 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       <div className="right-panel">
         {/* Panel Tabs */}
         <div className="tabs">
-          <button className="tab active">Properties</button>
-          <button className="tab">Simulate</button>
+          <button
+            className={`tab ${activeRightTab === 'properties' ? 'active' : ''}`}
+            onClick={() => setActiveRightTab('properties')}
+          >
+            Properties
+          </button>
+          <button
+            className={`tab ${activeRightTab === 'simulate' ? 'active' : ''}`}
+            onClick={() => setActiveRightTab('simulate')}
+          >
+            Simulate
+          </button>
+          <button
+            className={`tab ${activeRightTab === 'ai' ? 'active' : ''}`}
+            onClick={() => setActiveRightTab('ai')}
+          >
+            AI Copilot
+          </button>
         </div>
 
-        {/* Node Properties */}
-        {selectedNode ? (
+        {activeRightTab === 'ai' ? (
+          <div className="panel-body animate-fadeIn">
+            <AICopilotPanel
+              onLoadWorkflow={(aiNodes, aiEdges) => handleLoadWorkflowFromAi(aiNodes, aiEdges)}
+              groqApiKey={groqApiKey}
+              onApiKeyChange={setGroqApiKey}
+            />
+          </div>
+        ) : selectedNode ? (
           <div className="panel-body animate-fadeIn">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div>
