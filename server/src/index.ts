@@ -12,7 +12,11 @@ dotenv.config();
 const app: Express = express();
 const port = process.env.PORT || 8000;
 
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173', // or '*' for hackathon speed
+  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+  credentials: true
+}));
 app.use(express.json());
 
 app.get('/health', (req: Request, res: Response) => {
@@ -25,6 +29,7 @@ app.use('/api/intent', intentRoutes);
 //telegram 
 const pollTelegram = async () => {
   let lastUpdateId = 0;
+  let conflictSuppressed = false;
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const debug = process.env.MFX_DEBUG_AI === '1' || process.env.MFX_DEBUG_AI === 'true';
   if (!token) {
@@ -43,12 +48,24 @@ const pollTelegram = async () => {
       const data = await response.json();
 
       if (!data.ok) {
+        if (data.error_code === 409) {
+          if (debug && !conflictSuppressed) {
+            console.log('[POLL DEBUG] Suppressing Telegram 409 conflict noise (another getUpdates consumer is active).');
+          }
+          conflictSuppressed = true;
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          continue;
+        }
+
+        conflictSuppressed = false;
         console.error('[POLL ERROR] Telegram getUpdates returned not ok', {
           errorCode: data.error_code,
           description: data.description,
         });
         continue;
       }
+
+      conflictSuppressed = false;
 
       if (data.result.length > 0) {
         if (debug) {

@@ -27,6 +27,7 @@ export const parseIntent = async (userText: string, walletAddress: string): Prom
   let decision: IntentActionResult | null = null;
   const debug = process.env.MFX_DEBUG_AI === '1' || process.env.MFX_DEBUG_AI === 'true';
   const prompt = `Wallet: ${walletAddress}\nUser message: ${userText}`;
+  let searchAlreadyCalled = false;
 
   if (debug) {
     console.log('[AI DEBUG] parseIntent:start', {
@@ -41,20 +42,43 @@ export const parseIntent = async (userText: string, walletAddress: string): Prom
       description: 'Find workflows belonging to a wallet that might match a request.',
       inputSchema: z.object({ query: z.string() }),
       execute: async ({ query }: { query: string }) => {
+        if (searchAlreadyCalled) {
+          if (debug) {
+            console.log('⚠️ [TOOL] search_saved_workflows blocked: already called once in this parse');
+          }
+          return {
+            result: 'NOTFOUND' as const,
+            message: 'Search already executed once for this message. Do not call search again. You must now call build_new_workflow or execute_workflow.',
+            workflows: [],
+          };
+        }
+
+        searchAlreadyCalled = true;
+        const sanitizedQuery = query
+          .replace(new RegExp(walletAddress, 'gi'), '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        const effectiveQuery = sanitizedQuery.length > 0 ? sanitizedQuery : userText;
+
         if (debug) {
-          console.log('🔍 [TOOL] search_saved_workflows', { query, walletAddress });
+          console.log('🔍 [TOOL] search_saved_workflows', {
+            originalQuery: query,
+            effectiveQuery,
+            walletAddress,
+          });
         }
 
         const workflows = await prisma.workflow.findMany({
           where: {
             userWallet: walletAddress,
             OR: [
-              { name: { contains: query, mode: 'insensitive' } },
-              { triggerKeyword: { contains: query, mode: 'insensitive' } },
+              { name: { contains: effectiveQuery, mode: 'insensitive' } },
+              { triggerKeyword: { contains: effectiveQuery, mode: 'insensitive' } },
             ],
           },
-          select: { id: true, name: true, triggerKeyword: true, isActive: true },
-          take: 5,
+          select: { id: true, name: true, triggerKeyword: true },
+          take: 3,
         });
 
         if (debug) {
@@ -64,7 +88,18 @@ export const parseIntent = async (userText: string, walletAddress: string): Prom
           });
         }
 
-        return { count: workflows.length, workflows };
+        if (workflows.length === 0) {
+          return {
+            result: 'NOTFOUND' as const,
+            message: `No workflows found for "${effectiveQuery}". You should now call build_new_workflow to create one.`,
+            workflows: [],
+          };
+        }
+
+        return {
+          result: 'FOUND' as const,
+          workflows,
+        };
       },
     }),
 
@@ -150,6 +185,7 @@ export const parseIntent = async (userText: string, walletAddress: string): Prom
       model,
       system: AGENT_SYSTEM_PROMPT,
       prompt,
+      toolChoice: 'auto',
       tools: microFluxTools,
     });
 
