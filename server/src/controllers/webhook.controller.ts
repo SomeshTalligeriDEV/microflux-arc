@@ -35,10 +35,138 @@ const downloadTelegramFile = async (botToken: string, filePath: string): Promise
   return Buffer.from(arr);
 };
 
+const sendTelegramMessageWithMarkup = async (
+  chatId: string | number,
+  text: string,
+  replyMarkup: Record<string, unknown>,
+): Promise<boolean> => {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return false;
+
+  const url = `https://api.telegram.org/bot${token}/sendMessage`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+        reply_markup: replyMarkup,
+      }),
+    });
+
+    return response.ok;
+  } catch (error) {
+    console.error('Telegram sendMessage with markup failed:', error);
+    return false;
+  }
+};
+
+const answerTelegramCallbackQuery = async (
+  callbackQueryId: string,
+  options?: { text?: string; showAlert?: boolean },
+): Promise<void> => {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return;
+
+  const url = `https://api.telegram.org/bot${token}/answerCallbackQuery`;
+
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        callback_query_id: callbackQueryId,
+        text: options?.text,
+        show_alert: options?.showAlert ?? false,
+      }),
+    });
+  } catch (error) {
+    console.error('Telegram answerCallbackQuery failed:', error);
+  }
+};
+
 export const handleTelegramUpdate = async (req: Request, res: Response) => {
   try {
     const debug = process.env.MFX_DEBUG_AI === '1' || process.env.MFX_DEBUG_AI === 'true';
-    const { message } = req.body;
+    const update = req.body as {
+      message?: any;
+      callback_query?: {
+        id: string;
+        data?: string;
+        from?: { id?: number };
+        message?: { chat?: { id?: number } };
+      };
+    };
+    const { message, callback_query: callbackQuery } = update;
+
+    // ── Callback query handling (inline keyboard clicks) ─────────────────
+    if (callbackQuery) {
+      const callbackQueryId = String(callbackQuery.id || '').trim();
+      const callbackData = String(callbackQuery.data || '').trim();
+      const callbackChatId = callbackQuery.message?.chat?.id ?? callbackQuery.from?.id;
+
+      if (!callbackQueryId || !callbackChatId) {
+        return res.sendStatus(200);
+      }
+
+      try {
+        if (callbackData.startsWith('execute_')) {
+          const workflowId = callbackData.slice('execute_'.length).trim();
+          const linkedUser = await prisma.user.findUnique({
+            where: { telegramId: String(callbackChatId) },
+          });
+
+          if (!linkedUser) {
+            await sendTelegramMessage(
+              callbackChatId,
+              '⚠️ This Telegram is not linked yet. Use /start for linking instructions.',
+            );
+            await answerTelegramCallbackQuery(callbackQueryId, {
+              text: 'Account not linked',
+              showAlert: true,
+            });
+            return res.sendStatus(200);
+          }
+
+          const workflow = await prisma.workflow.findFirst({
+            where: {
+              id: workflowId,
+              userWallet: linkedUser.walletAddress,
+            },
+            select: { id: true, name: true },
+          });
+
+          if (!workflow) {
+            await sendTelegramMessage(callbackChatId, '❌ Workflow not found for your account.');
+            await answerTelegramCallbackQuery(callbackQueryId, {
+              text: 'Workflow not found',
+              showAlert: true,
+            });
+            return res.sendStatus(200);
+          }
+
+          await sendTelegramMessage(callbackChatId, `⚡ Executing workflow: ${workflow.name}...`);
+          // TODO: Trigger runner.ts here
+
+          await answerTelegramCallbackQuery(callbackQueryId, { text: 'Execution started' });
+          return res.sendStatus(200);
+        }
+
+        await answerTelegramCallbackQuery(callbackQueryId, { text: 'Unsupported action' });
+        return res.sendStatus(200);
+      } catch (callbackError) {
+        console.error('Callback query handler error:', callbackError);
+        await answerTelegramCallbackQuery(callbackQueryId, {
+          text: 'Failed to process action',
+          showAlert: true,
+        });
+        return res.sendStatus(200);
+      }
+    }
+
     if (!message) return res.sendStatus(200);
 
     const chatId = message.chat.id;
@@ -90,6 +218,27 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
 
     console.log(`🤖 Received command: ${userText}`);
 
+    // ── /start onboarding flow ─────────────────────
+    if (userText === '/start') {
+      const linkedUser = await prisma.user.findUnique({
+        where: { telegramId: String(chatId) },
+      });
+
+      if (!linkedUser) {
+        await sendTelegramMessage(
+          chatId,
+          "👋 Welcome to MicroFlux AI!\n\nI am your autonomous Algorand DeFi agent. To get started, please go to the Web App, click 'Link Telegram', and paste the code here (e.g., /link MFX-1234).",
+        );
+        return res.sendStatus(200);
+      }
+
+      await sendTelegramMessage(
+        chatId,
+        '👋 Welcome back! Send me a voice note to build a workflow, or type /workflows to see your saved automations.',
+      );
+      return res.sendStatus(200);
+    }
+
     // ── /link CODE flow ─────────────────────
     if (userText.toLowerCase().startsWith('/link ')) {
       const linkCode = userText.slice(6).trim().toUpperCase();
@@ -116,7 +265,7 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
 
       await sendTelegramMessage(
         chatId,
-        `✅ Wallet successfully linked!\nWallet: ${updated.walletAddress}\nNFD: ${updated.nfd ?? 'Not set'}`,
+        `✅ Wallet successfully linked!\n\nYour bot is now connected to ${updated.walletAddress}. Try sending a voice note like: 'Create a workflow to buy 5 ALGO'.`,
       );
       return res.sendStatus(200);
     }
@@ -143,6 +292,39 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
       return res.sendStatus(200);
     }
 
+    // ── /workflows command with inline keyboard ─────────────────────
+    if (userText.toLowerCase() === '/workflows') {
+      const workflows = await prisma.workflow.findMany({
+        where: { userWallet: linkedUser.walletAddress },
+        select: { id: true, name: true },
+        orderBy: { id: 'desc' },
+      });
+
+      if (workflows.length === 0) {
+        await sendTelegramMessage(
+          chatId,
+          "You don't have any saved workflows yet! Send me a voice note describing what you want to build.",
+        );
+        return res.sendStatus(200);
+      }
+
+      const keyboard = {
+        inline_keyboard: workflows.map((workflow) => ([
+          {
+            text: workflow.name,
+            callback_data: `execute_${workflow.id}`,
+          },
+        ])),
+      };
+
+      await sendTelegramMessageWithMarkup(
+        chatId,
+        'Here are your saved workflows. Click one to run it:',
+        keyboard,
+      );
+      return res.sendStatus(200);
+    }
+
     if (userText.toLowerCase() === '/status') {
       const workflows = await prisma.workflow.findMany({
         where: { userWallet: linkedUser.walletAddress },
@@ -155,6 +337,15 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
       await sendTelegramMessage(
         chatId,
         `👤 **User:** ${nfdDisplay}\n\n📂 **Saved Workflows:**\n${wfList}`,
+      );
+      return res.sendStatus(200);
+    }
+
+    // Never route unknown slash commands into AI intent parsing.
+    if (userText.startsWith('/')) {
+      await sendTelegramMessage(
+        chatId,
+        'Unknown command. Try /start, /workflows, or send a voice note to build a workflow.',
       );
       return res.sendStatus(200);
     }
@@ -247,7 +438,7 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
     res.sendStatus(200);
   } catch (error) {
     console.error('Webhook Error:', error);
-    const chatId = req.body?.message?.chat?.id;
+    const chatId = req.body?.message?.chat?.id || req.body?.callback_query?.message?.chat?.id;
     if (chatId) {
       await sendTelegramMessage(chatId, '❌ Execution failed. Check receiver address and server signer configuration.');
     }
