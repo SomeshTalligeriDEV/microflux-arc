@@ -26,20 +26,49 @@ app.use('/api/intent', intentRoutes);
 const pollTelegram = async () => {
   let lastUpdateId = 0;
   const token = process.env.TELEGRAM_BOT_TOKEN;
+  const debug = process.env.MFX_DEBUG_AI === '1' || process.env.MFX_DEBUG_AI === 'true';
   if (!token) {
     console.warn("⚠️ No TELEGRAM_BOT_TOKEN found, skipping polling.");
     return;
   }
 
   console.log("📥 Telegram Long Polling started...");
+  if (debug) {
+    console.log('[POLL DEBUG] MFX_DEBUG_AI is enabled for Telegram polling');
+  }
 
   while (true) {
     try {
       const response = await fetch(`https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=30`);
       const data = await response.json();
 
-      if (data.ok && data.result.length > 0) {
+      if (!data.ok) {
+        console.error('[POLL ERROR] Telegram getUpdates returned not ok', {
+          errorCode: data.error_code,
+          description: data.description,
+        });
+        continue;
+      }
+
+      if (data.result.length > 0) {
+        if (debug) {
+          console.log('[POLL DEBUG] updates received', {
+            count: data.result.length,
+            firstUpdateId: data.result[0]?.update_id,
+            nextOffset: lastUpdateId + 1,
+          });
+        }
+
         for (const update of data.result) {
+          if (debug) {
+            console.log('[POLL DEBUG] dispatching update', {
+              updateId: update.update_id,
+              hasMessage: Boolean(update.message),
+              text: update.message?.text,
+              chatId: update.message?.chat?.id,
+            });
+          }
+
           // Manually call your controller logic
           await handleTelegramUpdate({ body: update } as any, { sendStatus: () => {} } as any);
           lastUpdateId = update.update_id;

@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 
 export const handleTelegramUpdate = async (req: Request, res: Response) => {
   try {
+    const debug = process.env.MFX_DEBUG_AI === '1' || process.env.MFX_DEBUG_AI === 'true';
     const { message } = req.body;
     if (!message || !message.text) return res.sendStatus(200);
 
@@ -52,6 +53,15 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
       where: { telegramId: String(chatId) },
     });
 
+    if (debug) {
+      console.log('[WEBHOOK DEBUG] chat->user lookup', {
+        chatId: String(chatId),
+        linked: Boolean(linkedUser),
+        walletAddress: linkedUser?.walletAddress,
+        nfd: linkedUser?.nfd,
+      });
+    }
+
     if (!linkedUser) {
       await sendTelegramMessage(
         chatId,
@@ -60,27 +70,62 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
       return res.sendStatus(200);
     }
 
+    if (userText.toLowerCase() === '/status') {
+      const workflows = await prisma.workflow.findMany({
+        where: { userWallet: linkedUser.walletAddress },
+        select: { name: true },
+      });
+
+      const nfdDisplay = linkedUser.nfd || `${linkedUser.walletAddress.slice(0, 8)}...`;
+      const wfList = workflows.map((w) => `• ${w.name}`).join('\n') || 'No workflows saved yet.';
+
+      await sendTelegramMessage(
+        chatId,
+        `👤 **User:** ${nfdDisplay}\n\n📂 **Saved Workflows:**\n${wfList}`,
+      );
+      return res.sendStatus(200);
+    }
+
     const intent = await parseIntent(userText, linkedUser.walletAddress);
 
+    if (debug) {
+      console.log('[WEBHOOK DEBUG] intent decision', intent);
+    }
+
     if (intent.action === 'execute') {
-      const workflow = await prisma.workflow.findFirst({
+      const fullWorkflow = await prisma.workflow.findFirst({
         where: {
           id: intent.workflowId,
           userWallet: linkedUser.walletAddress,
         },
       });
 
-      if (!workflow) {
+      if (!fullWorkflow) {
         await sendTelegramMessage(chatId, '❌ I could not find that workflow in your account.');
         return res.sendStatus(200);
       }
 
-      console.log(`[AGENT] Executing workflow ${workflow.id} for wallet ${linkedUser.walletAddress}`);
+      if (debug) {
+        console.log('[WEBHOOK DEBUG] execute workflow fetched', {
+          workflowId: fullWorkflow.id,
+          name: fullWorkflow.name,
+          triggerKeyword: fullWorkflow.triggerKeyword,
+          nodesType: typeof fullWorkflow.nodes,
+          edgesType: typeof fullWorkflow.edges,
+        });
+      }
+
+      console.log(`[AGENT] Executing workflow ${fullWorkflow.id} for wallet ${linkedUser.walletAddress}`);
+
+      await sendTelegramMessage(
+        chatId,
+        `⚡️ **Executing: ${fullWorkflow.name}**\nI've started the process on the Algorand blockchain.`,
+      );
 
       const result = await executeWorkflow(
         {
-          nodes: (workflow.nodes as unknown as any[]) ?? [],
-          edges: (workflow.edges as unknown as any[]) ?? [],
+          nodes: (fullWorkflow.nodes as unknown as any[]) ?? [],
+          edges: (fullWorkflow.edges as unknown as any[]) ?? [],
         },
         { triggerChatId: chatId },
       );
@@ -89,7 +134,7 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
       const txLine = result.txIds.length > 0 ? `\nTx: ${result.txIds[0]}` : '';
       await sendTelegramMessage(
         chatId,
-        `✅ Workflow Executed\nName: ${workflow.name}\nStatus: ${status}${txLine}`,
+        `✅ Workflow Executed\nName: ${fullWorkflow.name}\nStatus: ${status}${txLine}`,
       );
 
       return res.sendStatus(200);
@@ -99,7 +144,7 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
       const created = await prisma.workflow.create({
         data: {
           name: intent.workflow.name,
-          triggerKeyword: intent.workflow.triggerKeyword,
+          triggerKeyword: intent.workflow.triggerKeyword || userText,
           nodes: intent.workflow.nodes as unknown as Prisma.InputJsonValue,
           edges: intent.workflow.edges as unknown as Prisma.InputJsonValue,
           isActive: true,
@@ -107,9 +152,18 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
         },
       });
 
+      if (debug) {
+        console.log('[WEBHOOK DEBUG] build workflow saved', {
+          workflowId: created.id,
+          name: created.name,
+          triggerKeyword: created.triggerKeyword,
+          userWallet: created.userWallet,
+        });
+      }
+
       await sendTelegramMessage(
         chatId,
-        `🧠 I created a new workflow for this request.\nWorkflow ID: ${created.id}\nName: ${created.name}`,
+        `✨ **New Workflow Created!**\nI've saved "${created.name}" to your dashboard. You can run it anytime by saying "${created.triggerKeyword}".`,
       );
 
       return res.sendStatus(200);
@@ -127,3 +181,4 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
     res.sendStatus(200); // Always 200 so Telegram doesn't retry infinitely
   }
 };
+

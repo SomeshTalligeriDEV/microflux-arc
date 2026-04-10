@@ -1,13 +1,15 @@
+// server/src/core/ai/intentParser.ts
 import { generateText, tool } from 'ai';
 import { z } from 'zod';
 import model from '../llmClient';
 import { prisma } from '../../exports/prisma';
+import { AGENT_SYSTEM_PROMPT } from './prompts';
 
 type FlowNode = {
   id: string;
   type: string;
   position: { x: number; y: number };
-  config: Record<string, unknown>;
+  config: Record<string, any>;
 };
 
 type FlowEdge = {
@@ -18,138 +20,158 @@ type FlowEdge = {
 
 export type IntentActionResult =
   | { action: 'execute'; workflowId: string; reason: string }
-  | { action: 'build'; reason: string; workflow: { name: string; triggerKeyword: string | null; nodes: FlowNode[]; edges: FlowEdge[] } }
+  | { action: 'build'; reason: string; workflow: { name: string; triggerKeyword: string; nodes: FlowNode[]; edges: FlowEdge[] } }
   | { action: 'none'; reason: string };
-
-const microAlgoAmount = (text: string): number => {
-  const amountMatch = text.match(/(\d+(?:\.\d+)?)\s*algo/i);
-  const amount = amountMatch ? Number(amountMatch[1]) : 0;
-  if (!Number.isFinite(amount) || amount <= 0) return 0;
-  return Math.round(amount * 1_000_000);
-};
-
-const extractReceiver = (text: string): string => {
-  const receiverMatch = text.match(/to\s+([A-Z2-7]{20,})/i);
-  return receiverMatch?.[1] ?? '';
-};
-
-const buildWorkflowFromPrompt = (prompt: string): { name: string; triggerKeyword: string | null; nodes: FlowNode[]; edges: FlowEdge[] } => {
-  const amount = microAlgoAmount(prompt);
-  const receiver = extractReceiver(prompt);
-
-  const triggerNode: FlowNode = {
-    id: '1',
-    type: 'telegram_command',
-    position: { x: 0, y: 120 },
-    config: { command: prompt, chatId: '' },
-  };
-
-  const actionNode: FlowNode = {
-    id: '2',
-    type: 'send_payment',
-    position: { x: 300, y: 120 },
-    config: {
-      amount: amount > 0 ? amount : 1_000_000,
-      receiver,
-    },
-  };
-
-  const notifyNode: FlowNode = {
-    id: '3',
-    type: 'telegram_notify',
-    position: { x: 600, y: 120 },
-    config: { chatId: '', message: 'Workflow executed from Telegram command.' },
-  };
-
-  return {
-    name: `Workflow: ${prompt.slice(0, 42)}`,
-    triggerKeyword: prompt.slice(0, 80),
-    nodes: [triggerNode, actionNode, notifyNode],
-    edges: [
-      { id: 'e1-2', source: '1', target: '2' },
-      { id: 'e2-3', source: '2', target: '3' },
-    ],
-  };
-};
 
 export const parseIntent = async (userText: string, walletAddress: string): Promise<IntentActionResult> => {
   let decision: IntentActionResult | null = null;
+  const debug = process.env.MFX_DEBUG_AI === '1' || process.env.MFX_DEBUG_AI === 'true';
+  const prompt = `Wallet: ${walletAddress}\nUser message: ${userText}`;
 
-  await generateText({
-    model,
-    system: `You are MicroFlux's agentic intent router.
-You must choose the right tool for each Telegram message.
-Rules:
-- First inspect saved workflows using search_saved_workflows.
-- If a relevant saved workflow exists, call execute_workflow with that workflowId.
-- If no suitable workflow exists, call build_new_workflow.
-- Never call multiple final-action tools in one run.`,
-    prompt: `Wallet: ${walletAddress}\nUser message: ${userText}`,
-    tools: {
-      search_saved_workflows: tool({
-        description: 'Find workflows belonging to a wallet that might match a request.',
-        inputSchema: z.object({
-          query: z.string(),
-        }),
-        execute: async ({ query }: { query: string }) => {
-          const workflows = await prisma.workflow.findMany({
-            where: {
-              userWallet: walletAddress,
-              OR: [
-                { name: { contains: query, mode: 'insensitive' } },
-                { triggerKeyword: { contains: query, mode: 'insensitive' } },
-              ],
-            },
-            select: {
-              id: true,
-              name: true,
-              triggerKeyword: true,
-              isActive: true,
-            },
-            take: 5,
-          });
+  if (debug) {
+    console.log('[AI DEBUG] parseIntent:start', {
+      walletAddress,
+      userText,
+      prompt,
+    });
+  }
 
-          return {
+  const microFluxTools = {
+    search_saved_workflows: tool({
+      description: 'Find workflows belonging to a wallet that might match a request.',
+      inputSchema: z.object({ query: z.string() }),
+      execute: async ({ query }: { query: string }) => {
+        if (debug) {
+          console.log('🔍 [TOOL] search_saved_workflows', { query, walletAddress });
+        }
+
+        const workflows = await prisma.workflow.findMany({
+          where: {
+            userWallet: walletAddress,
+            OR: [
+              { name: { contains: query, mode: 'insensitive' } },
+              { triggerKeyword: { contains: query, mode: 'insensitive' } },
+            ],
+          },
+          select: { id: true, name: true, triggerKeyword: true, isActive: true },
+          take: 5,
+        });
+
+        if (debug) {
+          console.log('🗄️ [DB] search_saved_workflows:result', {
             count: workflows.length,
             workflows,
-          };
-        },
+          });
+        }
+
+        return { count: workflows.length, workflows };
+      },
+    }),
+
+    execute_workflow: tool({
+      description: 'Select an existing workflow to execute now.',
+      inputSchema: z.object({
+        workflowId: z.string(),
+        reason: z.string().default('Matched saved workflow'),
       }),
-      execute_workflow: tool({
-        description: 'Select an existing workflow to execute now.',
-        inputSchema: z.object({
-          workflowId: z.string(),
-          reason: z.string().default('Matched saved workflow'),
-        }),
-        execute: async ({ workflowId, reason }: { workflowId: string; reason: string }) => {
-          decision = { action: 'execute', workflowId, reason };
-          return { ok: true, workflowId, reason };
-        },
+      execute: async ({ workflowId, reason }: { workflowId: string; reason: string }) => {
+        if (debug) {
+          console.log('🛠️ [TOOL] execute_workflow', { workflowId, reason });
+        }
+
+        decision = { action: 'execute', workflowId, reason };
+        return { ok: true, workflowId, reason };
+      },
+    }),
+
+    build_new_workflow: tool({
+      description: 'Build a new workflow graph when no suitable saved workflow exists.',
+      inputSchema: z.object({
+        reason: z.string(),
+        name: z.string(),
+        triggerKeyword: z.string(),
+        nodes: z.array(z.any()),
+        edges: z.array(z.any()),
       }),
-      build_new_workflow: tool({
-        description: 'Build a new workflow graph when no suitable saved workflow exists.',
-        inputSchema: z.object({
-          reason: z.string().default('No matching workflow found'),
-        }),
-        execute: async ({ reason }: { reason: string }) => {
-          const workflow = buildWorkflowFromPrompt(userText);
-          decision = { action: 'build', reason, workflow };
-          return {
-            ok: true,
+      execute: async ({
+        reason,
+        name,
+        triggerKeyword,
+        nodes,
+        edges,
+      }: {
+        reason: string;
+        name: string;
+        triggerKeyword: string;
+        nodes: FlowNode[];
+        edges: FlowEdge[];
+      }) => {
+        if (debug) {
+          console.log('🛠️ [TOOL] build_new_workflow', {
             reason,
-            workflowName: workflow.name,
-            nodeCount: workflow.nodes.length,
-          };
-        },
-      }),
-    },
-  });
+            name,
+            triggerKeyword,
+            nodesCount: nodes.length,
+            edgesCount: edges.length,
+          });
+        }
 
-  if (decision) return decision;
+        const scaledNodes = nodes.map((node) => {
+          if (node.type === 'send_payment' && node.config?.amount) {
+            const amount = Number(node.config.amount);
+            node.config.amount = amount < 100000 ? amount * 1000000 : amount;
+          }
+          return node;
+        });
 
-  return {
-    action: 'build',
-    reason: 'Fallback: no explicit tool action selected by model',
-    workflow: buildWorkflowFromPrompt(userText),
+        decision = { 
+          action: 'build', 
+          reason, 
+          workflow: { name, triggerKeyword, nodes: scaledNodes, edges } 
+        };
+
+        if (debug) {
+          console.log('🧱 [AI] build_new_workflow:normalized', {
+            action: decision.action,
+            workflowName: decision.workflow.name,
+            triggerKeyword: decision.workflow.triggerKeyword,
+            nodesCount: decision.workflow.nodes.length,
+            edgesCount: decision.workflow.edges.length,
+          });
+        }
+        
+        return { ok: true, reason, workflowName: name, nodeCount: nodes.length };
+      },
+    }),
   };
+
+  try {
+    const llmResult = await generateText({
+      model,
+      system: AGENT_SYSTEM_PROMPT,
+      prompt,
+      tools: microFluxTools,
+    });
+
+    if (debug) {
+      console.log('[AI DEBUG] generateText:result', {
+        finishReason: (llmResult as any)?.finishReason,
+        text: (llmResult as any)?.text,
+        toolCalls: (llmResult as any)?.toolCalls,
+      });
+    }
+
+    if (decision) return decision;
+
+    return {
+      action: 'none',
+      reason: 'Model completed without triggering a final tool action',
+    };
+  } catch (error) {
+    console.error("AI Parser Error:", error);
+    return {
+      action: 'none',
+      reason: 'Internal AI processing error',
+    };
+  }
 };
