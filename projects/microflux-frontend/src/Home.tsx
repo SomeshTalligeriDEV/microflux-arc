@@ -13,6 +13,7 @@ import { getAlgodConfigFromViteEnvironment } from './utils/network/getAlgoClient
 import { api, type Workflow } from './services/api';
 import SavedWorkflows from './components/SavedWorkflows';
 import TelegramLinkPanel from './components/TelegramLinkPanel';
+import TelegramLinkModal from './components/TelegramLinkModal';
 
 type DraftWorkflowPayload = {
   name?: string;
@@ -23,6 +24,7 @@ type DraftWorkflowPayload = {
 const Home: React.FC = () => {
   const [currentPage, setCurrentPage] = useState('home');
   const [openWalletModal, setOpenWalletModal] = useState(false);
+  const [openTelegramLinkModal, setOpenTelegramLinkModal] = useState(false);
   const { activeAddress, transactionSigner } = useWallet();
 
   // Wallet balance state
@@ -85,6 +87,10 @@ const Home: React.FC = () => {
 
   const toggleWalletModal = useCallback(() => {
     setOpenWalletModal((prev) => !prev);
+  }, []);
+
+  const toggleTelegramLinkModal = useCallback(() => {
+    setOpenTelegramLinkModal((prev) => !prev);
   }, []);
 
   const handleBalanceUpdate = useCallback((balance: number) => {
@@ -210,13 +216,6 @@ const Home: React.FC = () => {
         return (
           <>
             <HeroSection onNavigate={handleNavigate} />
-            <div className="page-container" style={{ paddingTop: '0' }}>
-              <TelegramLinkPanel
-                activeAddress={activeAddress ?? null}
-                isLinked={isLinked}
-                onRefreshLinkStatus={refreshLinkStatus}
-              />
-            </div>
           </>
         );
     }
@@ -232,6 +231,7 @@ const Home: React.FC = () => {
         balance={walletBalance}
         networkName={networkName}
         isLinked={isLinked}
+        onLinkTelegram={toggleTelegramLinkModal}
       />
 
       {renderPage()}
@@ -240,6 +240,13 @@ const Home: React.FC = () => {
         openModal={openWalletModal}
         closeModal={toggleWalletModal}
         onBalanceUpdate={handleBalanceUpdate}
+      />
+
+      <TelegramLinkModal
+        openModal={openTelegramLinkModal}
+        closeModal={toggleTelegramLinkModal}
+        activeAddress={activeAddress ?? null}
+        onRefreshLinkStatus={refreshLinkStatus}
       />
     </div>
   );
