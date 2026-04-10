@@ -90,7 +90,13 @@ const Home: React.FC = () => {
           />
         );
       case 'market':
-        return <MarketDataPanel />;
+        return (
+          <MarketDataPanel
+            activeAddress={activeAddress ?? null}
+            transactionSigner={transactionSigner}
+            networkName={networkName}
+          />
+        );
       default:
         return <HeroSection onNavigate={handleNavigate} />;
     }

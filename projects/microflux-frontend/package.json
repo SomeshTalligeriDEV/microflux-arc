@@ -38,7 +38,7 @@
     "tslib": "^2.6.2"
   },
   "scripts": {
-    "generate:app-clients": "where algokit >nul 2>nul && algokit project link --all || echo AlgoKit CLI not found on PATH, skipping project link",
+    "generate:app-clients": "command -v algokit >/dev/null 2>&1 && algokit project link --all || echo AlgoKit CLI not found on PATH, skipping project link",
     "dev": "npm run generate:app-clients && vite",
     "build": "npm run generate:app-clients && tsc && vite build",
     "preview": "vite preview"

@@ -39,8 +39,6 @@ if (network === 'localnet') {
 }
 
 console.log(`[MICROFLUX] Network: ${network}`)
-console.log(`[MICROFLUX] Wallets: ${supportedWallets.map((w) => w.id).join(', ')}`)
-
 // ── App Component ─────────────────────────────
 
 export default function App() {

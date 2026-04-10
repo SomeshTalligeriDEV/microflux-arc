@@ -30,7 +30,7 @@ interface CacheEntry<T> {
   timestamp: number;
 }
 
-const priceCache = new Map<string, CacheEntry<BinancePrice>>();
+const priceCache = new Map<string, CacheEntry<any>>();
 const CACHE_TTL = 10_000; // 10 seconds
 
 function getCached<T>(key: string): T | null {
@@ -43,7 +43,7 @@ function getCached<T>(key: string): T | null {
   return entry.data;
 }
 
-function setCache(key: string, data: unknown): void {
+function setCache(key: string, data: any): void {
   priceCache.set(key, { data, timestamp: Date.now() });
 }
 
@@ -151,4 +151,115 @@ export function formatChange(percent: number): { text: string; direction: 'up' |
     text: `${sign}${percent.toFixed(2)}%`,
     direction,
   };
+}
+
+// ── Klines / Candlestick Data ────────────────
+
+export interface Kline {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  timestamp: number;
+}
+
+/**
+ * Fetch historical klines (candlestick) data from Binance
+ * interval: 1m, 5m, 15m, 1h, 4h, 1d
+ */
+export async function getKlines(
+  token: string,
+  interval: string = '1h',
+  limit: number = 100
+): Promise<Kline[]> {
+  const symbol = BINANCE_SYMBOLS[token.toUpperCase()];
+  if (!symbol) return [];
+
+  const cacheKey = `klines_${symbol}_${interval}_${limit}`;
+  const cached = getCached<Kline[]>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const res = await fetch(
+      `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`
+    );
+    if (!res.ok) throw new Error(`Klines API error: ${res.status}`);
+
+    const data = await res.json();
+
+    const klines: Kline[] = data.map((k: any[]) => {
+      const openTime = new Date(k[0]);
+      return {
+        time: openTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+          ' ' + openTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+        volume: parseFloat(k[5]),
+        timestamp: k[0],
+      };
+    });
+
+    setCache(cacheKey, klines as any);
+    return klines;
+  } catch (err) {
+    console.warn('[Binance] Klines fetch failed:', err);
+    return [];
+  }
+}
+
+// ── Order Book (Top of Book) ─────────────────
+
+export interface OrderBookEntry {
+  price: number;
+  size: number;
+  total: number;
+}
+
+export async function getOrderBook(
+  token: string,
+  limit: number = 10
+): Promise<{ bids: OrderBookEntry[]; asks: OrderBookEntry[] }> {
+  const symbol = BINANCE_SYMBOLS[token.toUpperCase()];
+  if (!symbol) return { bids: [], asks: [] };
+
+  const cacheKey = `orderbook_${symbol}`;
+  const cached = getCached<{ bids: OrderBookEntry[]; asks: OrderBookEntry[] }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const res = await fetch(
+      `https://api.binance.com/api/v3/depth?symbol=${symbol}&limit=${limit}`
+    );
+    if (!res.ok) throw new Error(`Depth API error: ${res.status}`);
+
+    const data = await res.json();
+
+    const mapEntries = (entries: string[][]): OrderBookEntry[] => {
+      let cumTotal = 0;
+      return entries.map((e: string[]) => {
+        const size = parseFloat(e[1]);
+        cumTotal += size;
+        return {
+          price: parseFloat(e[0]),
+          size,
+          total: cumTotal,
+        };
+      });
+    };
+
+    const book = {
+      bids: mapEntries(data.bids),
+      asks: mapEntries(data.asks),
+    };
+
+    setCache(cacheKey, book as any);
+    return book;
+  } catch (err) {
+    console.warn('[Binance] Order book fetch failed:', err);
+    return { bids: [], asks: [] };
+  }
 }

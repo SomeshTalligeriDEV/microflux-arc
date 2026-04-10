@@ -39,7 +39,8 @@ export function getAppId(): number {
 function getAlgodClient(): algosdk.Algodv2 {
   const config = getAlgodConfigFromViteEnvironment()
   const serverUrl = config.port ? `${config.server}:${config.port}` : config.server
-  return new algosdk.Algodv2(config.token || '', serverUrl, '')
+  const token = (typeof config.token === 'string' ? config.token : '') as string
+  return new algosdk.Algodv2(token, serverUrl, '')
 }
 
 // ── Workflow Hash ────────────────────────────
@@ -101,7 +102,7 @@ export async function callExecute(
     const appArgs = [methodSelector, encodedHash]
 
     const txn = algosdk.makeApplicationCallTxnFromObject({
-      from: senderAddress,
+      sender: senderAddress,
       appIndex: targetAppId,
       onComplete: algosdk.OnApplicationComplete.NoOpOC,
       appArgs,
@@ -109,7 +110,8 @@ export async function callExecute(
     })
 
     const signedTxns = await signer([txn], [0])
-    const { txId } = await algod.sendRawTransaction(signedTxns[0]).do()
+    await algod.sendRawTransaction(signedTxns[0]).do()
+    const txId = txn.txID()
     await algosdk.waitForConfirmation(algod, txId, 4)
 
     console.log(`[MICROFLUX Contract] OK: execute() confirmed: ${txId}`)
@@ -156,7 +158,7 @@ export async function callRegisterWorkflow(
     const encodedHash = abiType.encode(workflowHash)
 
     const txn = algosdk.makeApplicationCallTxnFromObject({
-      from: senderAddress,
+      sender: senderAddress,
       appIndex: targetAppId,
       onComplete: algosdk.OnApplicationComplete.NoOpOC,
       appArgs: [methodSelector, encodedHash],
@@ -164,7 +166,8 @@ export async function callRegisterWorkflow(
     })
 
     const signedTxns = await signer([txn], [0])
-    const { txId } = await algod.sendRawTransaction(signedTxns[0]).do()
+    await algod.sendRawTransaction(signedTxns[0]).do()
+    const txId = txn.txID()
     await algosdk.waitForConfirmation(algod, txId, 4)
 
     console.log(`[MICROFLUX Contract] OK: register_workflow() confirmed: ${txId}`)
@@ -199,8 +202,8 @@ export async function executeAtomicGroup(
       for (const pay of transactions.payments) {
         txns.push(
           algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-            from: senderAddress,
-            to: pay.receiver,
+            sender: senderAddress,
+            receiver: pay.receiver,
             amount: pay.amountMicroAlgos,
             suggestedParams,
           }),
@@ -213,8 +216,8 @@ export async function executeAtomicGroup(
       for (const asa of transactions.asaTransfers) {
         txns.push(
           algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
-            from: senderAddress,
-            to: asa.receiver,
+            sender: senderAddress,
+            receiver: asa.receiver,
             assetIndex: asa.assetId,
             amount: asa.amount,
             suggestedParams,
@@ -233,7 +236,7 @@ export async function executeAtomicGroup(
 
         txns.push(
           algosdk.makeApplicationCallTxnFromObject({
-            from: senderAddress,
+            sender: senderAddress,
             appIndex: targetAppId,
             onComplete: algosdk.OnApplicationComplete.NoOpOC,
             appArgs: [methodSelector, encodedHash],
@@ -259,7 +262,8 @@ export async function executeAtomicGroup(
     const signedTxns = await signer(txns, indexesToSign)
 
     // Submit entire group
-    const { txId } = await algod.sendRawTransaction(signedTxns).do()
+    await algod.sendRawTransaction(signedTxns).do()
+    const txId = txns[0].txID()
     await algosdk.waitForConfirmation(algod, txId, 4)
 
     console.log(`[MICROFLUX Contract] OK: Atomic group confirmed: ${txId}`)
@@ -290,32 +294,32 @@ export async function getContractState(appId?: number): Promise<ContractState | 
     const algod = getAlgodClient()
     const appInfo = await algod.getApplicationByID(targetAppId).do()
 
-    const globalState = appInfo.params?.['global-state'] ?? []
+    const globalState = appInfo.params?.globalState ?? []
     const state: ContractState = {
       appId: targetAppId,
       totalExecutions: 0,
       workflowCount: 0,
       lastExecutionTime: 0,
       publicExecution: false,
-      creator: appInfo.params?.creator ?? '',
+      creator: appInfo.params?.creator?.toString() ?? '',
     }
 
     for (const kv of globalState) {
-      const key = atob(kv.key)
+      const key = new TextDecoder().decode(kv.key)
       const value = kv.value
 
       switch (key) {
         case 'total_executions':
-          state.totalExecutions = value.uint ?? 0
+          state.totalExecutions = Number(value.uint ?? 0n)
           break
         case 'workflow_count':
-          state.workflowCount = value.uint ?? 0
+          state.workflowCount = Number(value.uint ?? 0n)
           break
         case 'last_execution_time':
-          state.lastExecutionTime = value.uint ?? 0
+          state.lastExecutionTime = Number(value.uint ?? 0n)
           break
         case 'public_execution':
-          state.publicExecution = (value.uint ?? 0) === 1
+          state.publicExecution = Number(value.uint ?? 0n) === 1
           break
       }
     }
@@ -358,7 +362,7 @@ export async function genericAppCall(
     }
 
     const txn = algosdk.makeApplicationCallTxnFromObject({
-      from: senderAddress,
+      sender: senderAddress,
       appIndex: appId,
       onComplete: algosdk.OnApplicationComplete.NoOpOC,
       appArgs,
@@ -366,7 +370,8 @@ export async function genericAppCall(
     })
 
     const signedTxns = await signer([txn], [0])
-    const { txId } = await algod.sendRawTransaction(signedTxns[0]).do()
+    await algod.sendRawTransaction(signedTxns[0]).do()
+    const txId = txn.txID()
     await algosdk.waitForConfirmation(algod, txId, 4)
 
     console.log(`[MICROFLUX Contract] OK: Generic call confirmed: ${txId}`)
@@ -477,7 +482,7 @@ export async function deployContract(
     const suggestedParams = await algod.getTransactionParams().do()
 
     const txn = algosdk.makeApplicationCreateTxnFromObject({
-      from: senderAddress,
+      sender: senderAddress,
       approvalProgram,
       clearProgram,
       numGlobalByteSlices: 1,  // last_workflow_hash
@@ -498,13 +503,14 @@ export async function deployContract(
     }
 
     // 5. Submit
-    const { txId } = await algod.sendRawTransaction(signedTxns[0]).do()
+    await algod.sendRawTransaction(signedTxns[0]).do()
+    const txId = txn.txID()
     console.log(`[MICROFLUX Deploy] Submitted. TX: ${txId}`)
 
     // 6. Wait for confirmation
     const result = await algosdk.waitForConfirmation(algod, txId, 4)
-    const appId = result['application-index'] as number
-    const appAddress = algosdk.getApplicationAddress(appId)
+    const appId = Number(result.applicationIndex ?? 0)
+    const appAddress = algosdk.getApplicationAddress(appId).toString()
 
     console.log(`[MICROFLUX Deploy] SUCCESS. App ID: ${appId}, Address: ${appAddress}`)
 

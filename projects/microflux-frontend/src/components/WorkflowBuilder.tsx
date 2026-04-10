@@ -43,6 +43,7 @@ import {
   type ContractState,
 } from '../services/contractService';
 import AICopilotPanel from './AICopilotPanel';
+import algosdk from 'algosdk';
 import type { AINode, AIEdge } from '../services/aiService';
 
 // Execution modes
@@ -136,7 +137,7 @@ interface WorkflowBuilderProps {
   initialEdges?: AIEdge[];
   workflowName?: string;
   activeAddress: string | null;
-  transactionSigner?: (txnGroup: unknown[], indexesToSign: number[]) => Promise<Uint8Array[]>;
+  transactionSigner?: (txnGroup: algosdk.Transaction[], indexesToSign: number[]) => Promise<Uint8Array[]>;
   networkName?: string;
   onBalanceUpdate?: (balance: number) => void;
 }
@@ -1001,7 +1002,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           onPaneClick={() => setSelectedNodeId(null)}
           onInit={(instance) => { flowInstanceRef.current = instance; }}
           defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-          connectOnClick={false}
+          connectOnClick={true}
           connectionLineType={ConnectionLineType.Bezier}
           connectionLineStyle={{ stroke: 'rgba(56, 189, 248, 0.55)', strokeWidth: 2 }}
           fitView

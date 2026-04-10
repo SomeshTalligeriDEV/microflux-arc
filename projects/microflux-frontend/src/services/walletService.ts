@@ -48,7 +48,7 @@ function getAlgodClient(): algosdk.Algodv2 {
     ? `${config.server}:${config.port}`
     : config.server
 
-  const token = config.token || ''
+  const token = (typeof config.token === 'string' ? config.token : '') as string
 
   console.log(`[MICROFLUX Wallet] Algod endpoint: ${serverUrl}`)
   console.log(`[MICROFLUX Wallet] Network: ${config.network}`)
@@ -103,8 +103,8 @@ export async function fetchAccountBalance(address: string): Promise<AccountBalan
       address,
       balanceMicroAlgos,
       balanceAlgos: balanceMicroAlgos / 1_000_000,
-      minBalance: Number(accountInfo.minBalance ?? accountInfo['min-balance'] ?? 0) / 1_000_000,
-      pendingRewards: Number(accountInfo.pendingRewards ?? accountInfo['pending-rewards'] ?? 0) / 1_000_000,
+      minBalance: Number(accountInfo.minBalance ?? 0) / 1_000_000,
+      pendingRewards: Number(accountInfo.pendingRewards ?? 0) / 1_000_000,
     }
 
     console.log(`[MICROFLUX Wallet] Balance: ${result.balanceAlgos} ALGO`)
@@ -136,9 +136,9 @@ export async function fetchAccountAssets(address: string): Promise<AssetHolding[
       'fetchAssets',
     )
 
-    const assets = accountInfo.assets ?? accountInfo['created-assets'] ?? []
+    const assets = accountInfo.assets ?? accountInfo.createdAssets ?? []
 
-    const holdings = assets.map((asset: Record<string, unknown>) => ({
+    const holdings = assets.map((asset: any) => ({
       assetId: Number(asset['asset-id'] ?? asset.assetId ?? 0),
       amount: Number(asset.amount ?? 0),
       isFrozen: Boolean(asset['is-frozen'] ?? asset.isFrozen ?? false),
@@ -171,15 +171,16 @@ export async function sendPayment(
     const suggestedParams = await algod.getTransactionParams().do()
 
     const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-      from: senderAddress,
-      to: receiverAddress,
+      sender: senderAddress,
+      receiver: receiverAddress,
       amount: amountMicroAlgos,
       suggestedParams,
     })
 
     // Sign using wallet provider
     const signedTxns = await signer([txn], [0])
-    const { txId } = await algod.sendRawTransaction(signedTxns[0]).do()
+    await algod.sendRawTransaction(signedTxns[0]).do()
+    const txId = txn.txID()
 
     // Wait for confirmation
     await algosdk.waitForConfirmation(algod, txId, 4)
@@ -226,15 +227,16 @@ export async function sendAsaTransfer(
     const suggestedParams = await algod.getTransactionParams().do()
 
     const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
-      from: senderAddress,
-      to: receiverAddress,
+      sender: senderAddress,
+      receiver: receiverAddress,
       assetIndex: assetId,
       amount: amount,
       suggestedParams,
     })
 
     const signedTxns = await signer([txn], [0])
-    const { txId } = await algod.sendRawTransaction(signedTxns[0]).do()
+    await algod.sendRawTransaction(signedTxns[0]).do()
+    const txId = txn.txID()
 
     await algosdk.waitForConfirmation(algod, txId, 4)
 
@@ -264,7 +266,7 @@ export async function checkAlgodHealth(): Promise<{ ok: boolean; message: string
   try {
     const algod = getAlgodClient()
     const status = await algod.status().do()
-    const round = status['last-round'] ?? status.lastRound ?? 0
+    const round = status.lastRound ?? 0
     return {
       ok: true,
       message: `Connected to Algorand (round ${round})`,
