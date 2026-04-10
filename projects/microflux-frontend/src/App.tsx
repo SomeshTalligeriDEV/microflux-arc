@@ -1,6 +1,7 @@
 import { SupportedWallet, WalletId, WalletManager, WalletProvider } from '@txnlab/use-wallet-react'
 import { SnackbarProvider } from 'notistack'
 import Home from './Home'
+import ApproveExecution from './ApproveExecution'
 import { getAlgodConfigFromViteEnvironment, getKmdConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
 
 // ── Determine supported wallets based on network ──
@@ -43,6 +44,10 @@ console.log(`[MICROFLUX] Network: ${network}`)
 
 export default function App() {
   const algodConfig = getAlgodConfigFromViteEnvironment()
+  const path = window.location.pathname
+  const approveToken = path.startsWith('/approve/')
+    ? decodeURIComponent(path.replace('/approve/', '').split('/')[0] || '')
+    : null
 
   console.log(`[MICROFLUX] Algod server: ${algodConfig.server}`)
   console.log(`[MICROFLUX] Algod port: ${algodConfig.port || '(none)'}`)
@@ -67,7 +72,7 @@ export default function App() {
   return (
     <SnackbarProvider maxSnack={3}>
       <WalletProvider manager={walletManager}>
-        <Home />
+        {approveToken ? <ApproveExecution token={approveToken} /> : <Home />}
       </WalletProvider>
     </SnackbarProvider>
   )

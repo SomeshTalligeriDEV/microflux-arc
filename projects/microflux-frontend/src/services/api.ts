@@ -25,6 +25,15 @@ export interface TelegramLinkResponse {
   command: string;
 }
 
+export interface PendingExecutionDetails {
+  token: string;
+  workflowId: string;
+  workflowName: string;
+  params: Record<string, unknown>;
+  nodes: any[];
+  edges: any[];
+}
+
 async function readJsonOrThrow<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text();
@@ -95,5 +104,20 @@ export const api = {
       body: JSON.stringify({ walletAddress, prompt }),
     });
     return readJsonOrThrow<any>(res);
-  }
+  },
+
+  getPendingExecution: async (token: string): Promise<PendingExecutionDetails> => {
+    const res = await fetch(`${BASE_URL}/execution/${encodeURIComponent(token)}`);
+    const data = await readJsonOrThrow<{ success: boolean; execution: PendingExecutionDetails }>(res);
+    return data.execution;
+  },
+
+  confirmExecution: async (token: string, txId: string): Promise<void> => {
+    const res = await fetch(`${BASE_URL}/execution/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, txId }),
+    });
+    await readJsonOrThrow<{ success: boolean }>(res);
+  },
 };
