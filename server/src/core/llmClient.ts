@@ -1,11 +1,10 @@
-import { createOllama } from "ai-sdk-ollama"
-const modelId = "kimi-k2.5:cloud";
+import { createGroq } from '@ai-sdk/groq'
+const modelId = 'openai/gpt-oss-120b'
 
-const ollama  = createOllama({
-  apiKey: "ollama",
-  baseURL: "http://localhost:11434",
-});
+const groq = createGroq({
+  apiKey: process.env.GROQ_API_KEY,
+})
 
-const model = ollama(modelId);
+const model = groq(modelId)
 
 export default model;

@@ -50,15 +50,6 @@ const Navbar: React.FC<NavbarProps> = ({
         <li>
           <a
             href="#"
-            className={currentPage === 'ai' ? 'active' : ''}
-            onClick={(e) => { e.preventDefault(); onNavigate('ai'); }}
-          >
-            AI Copilot
-          </a>
-        </li>
-        <li>
-          <a
-            href="#"
             className={currentPage === 'market' ? 'active' : ''}
             onClick={(e) => { e.preventDefault(); onNavigate('market'); }}
           >
