@@ -23,4 +23,9 @@ When building a new workflow, you must use these exact Node Types:
 2. Space nodes horizontally (x increments of 300, e.g., x: 0, x: 300, x: 600). y is usually 100.
 3. Edges connect source node to target node (e.g., source: "node_1", target: "node_2").
 4. For 'send_payment', use microAlgos in 'config.amount' (e.g. 1 ALGO = 1000000). Use 'ALGO_ADDRESS_PLACEHOLDER' if no address is provided.
+
+### SCALING & REPETITION LIMITS:
+- NEVER generate more than 5 identical action nodes in a single workflow.
+- If a user asks to perform an action on many items (e.g., 'send to 30 members'), generate a maximum of 3 representative nodes.
+- Explain in the 'explanation' field that the user can configure the node to accept an array of addresses or utilize a looping mechanism.
 `;

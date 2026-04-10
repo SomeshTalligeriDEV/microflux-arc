@@ -5,15 +5,88 @@ import { sendTelegramMessage } from '../core/integrations/telegram';
 import { prisma } from '../exports/prisma'; 
 import { resolveNFD } from '../core/integrations/algorand/nfd';
 import { Prisma } from '@prisma/client';
+import { transcribeAudio } from '../services/sarvam.service';
+
+const getTelegramFilePath = async (botToken: string, fileId: string): Promise<string> => {
+  const url = `https://api.telegram.org/bot${botToken}/getFile?file_id=${encodeURIComponent(fileId)}`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`Telegram getFile failed with status ${response.status}`);
+  }
+
+  const payload = await response.json() as { ok?: boolean; result?: { file_path?: string }; description?: string };
+  if (!payload.ok || !payload.result?.file_path) {
+    throw new Error(`Telegram getFile returned no file_path: ${payload.description || 'unknown error'}`);
+  }
+
+  return payload.result.file_path;
+};
+
+const downloadTelegramFile = async (botToken: string, filePath: string): Promise<Buffer> => {
+  const url = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`Telegram file download failed with status ${response.status}`);
+  }
+
+  const arr = await response.arrayBuffer();
+  return Buffer.from(arr);
+};
 
 export const handleTelegramUpdate = async (req: Request, res: Response) => {
   try {
     const debug = process.env.MFX_DEBUG_AI === '1' || process.env.MFX_DEBUG_AI === 'true';
     const { message } = req.body;
-    if (!message || !message.text) return res.sendStatus(200);
+    if (!message) return res.sendStatus(200);
 
     const chatId = message.chat.id;
-    const userText = String(message.text).trim();
+    const hasText = typeof message.text === 'string' && message.text.trim().length > 0;
+    const hasVoice = Boolean(message.voice?.file_id);
+
+    if (!hasText && !hasVoice) {
+      return res.sendStatus(200);
+    }
+
+    let userText = hasText ? String(message.text).trim() : '';
+
+    if (!userText && hasVoice) {
+      const token = process.env.TELEGRAM_BOT_TOKEN;
+      if (!token) {
+        console.error('Voice transcription skipped: TELEGRAM_BOT_TOKEN is missing');
+        await sendTelegramMessage(chatId, 'Could not understand audio');
+        return res.sendStatus(200);
+      }
+
+      try {
+        const fileId = String(message.voice.file_id);
+        console.log('[VOICE] Received voice note', { chatId: String(chatId), fileId });
+        const filePath = await getTelegramFilePath(token, fileId);
+        console.log('[VOICE] Telegram file path resolved', { filePath });
+        const audioBuffer = await downloadTelegramFile(token, filePath);
+        console.log('[VOICE] Voice file downloaded', { bytes: audioBuffer.length });
+        userText = await transcribeAudio(audioBuffer, 'voice.ogg');
+        console.log('[VOICE] Transcription complete', { transcript: userText });
+
+        if (debug) {
+          console.log('[WEBHOOK DEBUG] voice transcription success', {
+            chatId: String(chatId),
+            fileId,
+            transcript: userText,
+          });
+        }
+      } catch (voiceError) {
+        console.error('Voice transcription error:', voiceError);
+        await sendTelegramMessage(chatId, 'Could not understand audio');
+        return res.sendStatus(200);
+      }
+    }
+
+    if (!userText) {
+      await sendTelegramMessage(chatId, 'Could not understand audio');
+      return res.sendStatus(200);
+    }
 
     console.log(`🤖 Received command: ${userText}`);
 

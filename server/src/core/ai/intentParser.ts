@@ -218,10 +218,29 @@ export const parseIntent = async (
       reason: 'Model completed without triggering a final tool action',
     };
   } catch (error) {
-    console.error("AI Parser Error:", error);
+    const err = error as {
+      name?: string;
+      message?: string;
+      cause?: unknown;
+      statusCode?: number;
+    };
+
+    const errorMessage = String(err?.message ?? 'Unknown AI parser error');
+    const isToolJsonParseError = /Failed to parse tool call arguments as JSON|tool call arguments|Unexpected token/i.test(errorMessage);
+    const isApiCallError = err?.name === 'APICallError' || typeof err?.statusCode === 'number';
+
+    console.error('[AI Parser Error]', {
+      name: err?.name,
+      statusCode: err?.statusCode,
+      message: errorMessage,
+      isToolJsonParseError,
+      isApiCallError,
+      cause: err?.cause,
+    });
+
     return {
       action: 'none',
-      reason: 'Internal AI processing error',
+      reason: 'The AI encountered an error generating this complex workflow. Try breaking your request into smaller steps.',
     };
   }
 };
