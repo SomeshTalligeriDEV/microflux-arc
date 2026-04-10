@@ -70,6 +70,16 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     color: CATEGORY_COLORS.trigger,
     defaultConfig: { path: '/api/trigger', method: 'POST' },
   },
+  {
+    type: 'telegram_command',
+    label: 'Telegram Command',
+    description: 'Trigger workflow from Telegram message',
+    category: 'trigger',
+    icon: '✉',
+    isReal: false,
+    color: CATEGORY_COLORS.trigger,
+    defaultConfig: { command: '/start', chatId: '' },
+  },
 
   // ── ACTIONS ─────────────────────────────────
   {

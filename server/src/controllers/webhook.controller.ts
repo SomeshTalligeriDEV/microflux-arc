@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import { parseIntent } from '../core/ai/groqClient'; // We'll build this next
-import { executeWorkflow } from '../core/engine/runner';
+import { parseIntent } from '../core/ai/intentParser';
+// import { executeWorkflow } from '../core/engine/runner';
 import { sendTelegramMessage } from '../core/integrations/telegram';
 
 export const handleTelegramUpdate = async (req: Request, res: Response) => {
@@ -11,18 +11,22 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
     const chatId = message.chat.id;
     const userText = message.text;
 
-    // 1. Brain: Ask Groq to turn the text into a MicroFlux JSON workflow
+    console.log(`🤖 Received command: ${userText}`);
+
+    // 1. Brain: Parse Intent
     const workflow = await parseIntent(userText);
 
-    // 2. Action: Run the generated workflow immediately
-    const result = await executeWorkflow(workflow);
+    console.log(`✅ Workflow generated with ${workflow.nodes.length} nodes`);
 
-    // 3. Feedback: Notify the user on Telegram
-    await sendTelegramMessage(chatId, `✅ Intent Parsed & Executed!\nNodes: ${workflow.nodes.length}\nStatus: Success`);
+    // 2. Action: Execute (Mocked for now until runner is complete)
+    // const result = await executeWorkflow(workflow);
+
+    // 3. Feedback: Reply to the specific user
+    await sendTelegramMessage(chatId, `✅ Intent Parsed!\nI built a workflow with ${workflow.nodes.length} nodes for this action.`);
 
     res.sendStatus(200);
   } catch (error) {
     console.error('Webhook Error:', error);
-    res.sendStatus(200); // Always send 200 to Telegram so it stops retrying
+    res.sendStatus(200); // Always 200 so Telegram doesn't retry infinitely
   }
 };

@@ -15,6 +15,7 @@ export const sendTelegramAlert = async (message: string): Promise<boolean> => {
  */
 export const sendTelegramMessage = async (chatId: string | number, text: string): Promise<boolean> => {
   const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return false;
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
 
   try {

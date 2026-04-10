@@ -24,6 +24,10 @@ app.use('/api/intent', intentRoutes);
 const pollTelegram = async () => {
   let lastUpdateId = 0;
   const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) {
+    console.warn("⚠️ No TELEGRAM_BOT_TOKEN found, skipping polling.");
+    return;
+  }
 
   console.log("📥 Telegram Long Polling started...");
 
@@ -41,7 +45,7 @@ const pollTelegram = async () => {
       }
     } catch (err) {
       console.error("Polling error:", err);
-      await new Promise(resolve => setTimeout(resolve, 5000)); 
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
   }
 };
