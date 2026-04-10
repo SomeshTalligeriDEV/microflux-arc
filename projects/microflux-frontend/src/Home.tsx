@@ -10,7 +10,8 @@ import ConnectWallet from './components/ConnectWallet';
 import type { AINode, AIEdge } from './services/aiService';
 import { fetchAccountBalance } from './services/walletService';
 import { getAlgodConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs';
-import { api } from './services/api';
+import { api, type Workflow } from './services/api';
+import SavedWorkflows from './components/SavedWorkflows';
 
 const Home: React.FC = () => {
   const [currentPage, setCurrentPage] = useState('home');
@@ -29,6 +30,7 @@ const Home: React.FC = () => {
   const [workflowNodes, setWorkflowNodes] = useState<AINode[]>([]);
   const [workflowEdges, setWorkflowEdges] = useState<AIEdge[]>([]);
   const [workflowName, setWorkflowName] = useState('');
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
 
   // Auto-fetch balance on wallet connect
   useEffect(() => {
@@ -68,12 +70,49 @@ const Home: React.FC = () => {
   }, []);
 
   // Load workflow from AI or Marketplace
-  const handleLoadWorkflow = useCallback((nodes: AINode[], edges: AIEdge[], name: string) => {
+  const handleLoadWorkflow = useCallback((nodes: AINode[], edges: AIEdge[], name: string, workflowId: string | null = null) => {
     setWorkflowNodes(nodes);
     setWorkflowEdges(edges);
     setWorkflowName(name);
+    setSelectedWorkflowId(workflowId);
     setCurrentPage('builder');
   }, []);
+
+  const normalizeLoadedNode = useCallback((node: any, index: number): AINode => {
+    const type = String(node?.type ?? 'debug_log');
+    const category = typeof node?.category === 'string'
+      ? String(node.category).toLowerCase()
+      : 'logic';
+
+    return {
+      id: String(node?.id ?? `node_${index + 1}`),
+      type,
+      label: String(node?.label ?? type.replace(/_/g, ' ')),
+      category: (['trigger', 'action', 'logic', 'defi', 'notification'].includes(category)
+        ? category
+        : 'logic') as AINode['category'],
+      config: (node?.config ?? node?.params ?? {}) as Record<string, unknown>,
+      position: {
+        x: Number(node?.position?.x ?? node?.x ?? index * 280),
+        y: Number(node?.position?.y ?? node?.y ?? 120),
+      },
+    };
+  }, []);
+
+  const normalizeLoadedEdge = useCallback((edge: any, index: number): AIEdge => ({
+    id: String(edge?.id ?? `edge_${index + 1}`),
+    source: String(edge?.source ?? edge?.from ?? ''),
+    target: String(edge?.target ?? edge?.to ?? ''),
+  }), []);
+
+  const handleOpenSavedWorkflow = useCallback((workflow: Workflow) => {
+    const nodes = (Array.isArray(workflow.nodes) ? workflow.nodes : []).map(normalizeLoadedNode);
+    const edges = (Array.isArray(workflow.edges) ? workflow.edges : [])
+      .map(normalizeLoadedEdge)
+      .filter((edge) => edge.source && edge.target);
+
+    handleLoadWorkflow(nodes, edges, workflow.name, workflow.id);
+  }, [handleLoadWorkflow, normalizeLoadedEdge, normalizeLoadedNode]);
 
   const renderPage = () => {
     switch (currentPage) {
@@ -83,6 +122,7 @@ const Home: React.FC = () => {
             initialNodes={workflowNodes}
             initialEdges={workflowEdges}
             workflowName={workflowName}
+            workflowId={selectedWorkflowId}
             activeAddress={activeAddress ?? null}
             transactionSigner={transactionSigner}
             networkName={networkName}
@@ -109,6 +149,13 @@ const Home: React.FC = () => {
             activeAddress={activeAddress ?? null}
             transactionSigner={transactionSigner}
             networkName={networkName}
+          />
+        );
+      case 'saved':
+        return (
+          <SavedWorkflows
+            activeAddress={activeAddress ?? null}
+            onOpenWorkflow={handleOpenSavedWorkflow}
           />
         );
       default:

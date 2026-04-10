@@ -8,6 +8,7 @@ export interface Workflow {
   nodes: any[];
   edges: any[];
   isActive: boolean;
+  userWallet?: string;
 }
 
 export interface LinkStatus {
@@ -34,7 +35,7 @@ export const api = {
 
   // Fetch all saved workflows for the dashboard
   getWorkflows: async (walletAddress: string): Promise<Workflow[]> => {
-    const res = await fetch(`${BASE_URL}/workflows?walletAddress=${encodeURIComponent(walletAddress)}`);
+    const res = await fetch(`${BASE_URL}/workflows/${encodeURIComponent(walletAddress)}`);
     const data = await readJsonOrThrow<{ success: boolean; workflows: Workflow[] }>(res);
     return data.workflows;
   },
@@ -48,6 +49,24 @@ export const api = {
     });
     const data = await readJsonOrThrow<{ success: boolean; workflow: Workflow }>(res);
     return data.workflow;
+  },
+
+  updateWorkflow: async (workflowId: string, walletAddress: string, workflowData: Partial<Workflow>): Promise<Workflow> => {
+    const res = await fetch(`${BASE_URL}/workflows/${workflowId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletAddress, ...workflowData }),
+    });
+    const data = await readJsonOrThrow<{ success: boolean; workflow: Workflow }>(res);
+    return data.workflow;
+  },
+
+  deleteWorkflow: async (workflowId: string, walletAddress: string): Promise<void> => {
+    const res = await fetch(
+      `${BASE_URL}/workflows/${workflowId}?walletAddress=${encodeURIComponent(walletAddress)}`,
+      { method: 'DELETE' },
+    );
+    await readJsonOrThrow<{ success: boolean }>(res);
   },
 
   // NEW: Send a prompt to the AI Brain from the UI (instead of just Telegram)

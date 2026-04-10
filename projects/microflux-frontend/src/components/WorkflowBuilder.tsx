@@ -45,6 +45,7 @@ import {
 import AICopilotPanel from './AICopilotPanel';
 import algosdk from 'algosdk';
 import type { AINode, AIEdge } from '../services/aiService';
+import { api } from '../services/api';
 
 // Execution modes
 type ExecutionMode = 'direct' | 'contract' | 'atomic';
@@ -136,6 +137,7 @@ interface WorkflowBuilderProps {
   initialNodes?: AINode[];
   initialEdges?: AIEdge[];
   workflowName?: string;
+  workflowId?: string | null;
   activeAddress: string | null;
   transactionSigner?: (txnGroup: algosdk.Transaction[], indexesToSign: number[]) => Promise<Uint8Array[]>;
   networkName?: string;
@@ -148,6 +150,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   initialNodes,
   initialEdges,
   workflowName,
+  workflowId,
   activeAddress,
   transactionSigner,
   networkName = 'localnet',
@@ -172,6 +175,8 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const [useSmartContract, setUseSmartContract] = useState(true);
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployedAppId, setDeployedAppId] = useState<number>(0);
+  const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(workflowId ?? null);
+  const [isSaving, setIsSaving] = useState(false);
   const [viewportInitialized, setViewportInitialized] = useState(false);
   const [paletteDragPreview, setPaletteDragPreview] = useState<PaletteDragPreview | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -243,9 +248,63 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       });
       setNodes(canvasNodes);
       setEdges(initialEdges?.map((e) => ({ id: e.id, source: e.source, target: e.target })) ?? []);
+      setCurrentWorkflowId(workflowId ?? null);
       nodeCounter.current = canvasNodes.length;
     }
-  }, [initialNodes, initialEdges]);
+  }, [initialNodes, initialEdges, workflowId]);
+
+  const handleSaveWorkflow = useCallback(async () => {
+    if (!activeAddress) {
+      alert('Connect wallet first to save workflows.');
+      return;
+    }
+
+    if (nodes.length === 0) {
+      alert('Add at least one node before saving.');
+      return;
+    }
+
+    const normalizedNodes = nodes.map((node) => ({
+      id: node.id,
+      type: node.type,
+      label: node.label,
+      category: node.category,
+      config: node.config,
+      position: node.position,
+    }));
+
+    const normalizedEdges = edges.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+    }));
+
+    const safeName = (workflowName && workflowName.trim().length > 0)
+      ? workflowName.trim()
+      : `Workflow ${new Date().toLocaleString()}`;
+
+    setIsSaving(true);
+    try {
+      const payload = {
+        name: safeName,
+        triggerKeyword: safeName.toLowerCase(),
+        nodes: normalizedNodes,
+        edges: normalizedEdges,
+        isActive: true,
+      };
+
+      const saved = currentWorkflowId
+        ? await api.updateWorkflow(currentWorkflowId, activeAddress, payload)
+        : await api.saveWorkflow(activeAddress, payload);
+
+      setCurrentWorkflowId(saved.id);
+      alert(currentWorkflowId ? 'Workflow updated in DB.' : 'Workflow saved to DB.');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to save workflow');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [activeAddress, currentWorkflowId, edges, nodes, workflowName]);
 
   const flowNodes = useMemo(() => nodes.map(toFlowNode), [nodes]);
   const flowEdges = useMemo(() => edges.map(toFlowEdge), [edges]);
@@ -1468,6 +1527,14 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
             )}
             <button className="btn btn-outline w-full" onClick={simulateWorkflow} disabled={nodes.length === 0 || isSimulating} style={{ marginBottom: '8px', fontSize: '0.7rem' }}>
               {isSimulating ? 'SIMULATING...' : 'SIMULATE'}
+            </button>
+            <button
+              className="btn btn-accent w-full"
+              onClick={handleSaveWorkflow}
+              disabled={isSaving || nodes.length === 0 || !activeAddress}
+              style={{ marginBottom: '8px', fontSize: '0.7rem' }}
+            >
+              {isSaving ? 'SAVING...' : currentWorkflowId ? 'UPDATE WORKFLOW' : 'SAVE WORKFLOW'}
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', marginBottom: '10px', cursor: 'pointer' }} onClick={() => setUseSmartContract(!useSmartContract)}>
               <div style={{ width: '32px', height: '18px', borderRadius: '9px', background: useSmartContract ? 'var(--color-accent)' : 'var(--color-bg-tertiary)', position: 'relative', transition: 'background 0.2s', flexShrink: 0, border: `1px solid ${useSmartContract ? 'var(--color-accent)' : 'var(--color-border)'}` }}>

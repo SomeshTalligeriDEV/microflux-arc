@@ -58,6 +58,15 @@ const Navbar: React.FC<NavbarProps> = ({
             Market
           </a>
         </li>
+        <li>
+          <a
+            href="#"
+            className={currentPage === 'saved' ? 'active' : ''}
+            onClick={(e) => { e.preventDefault(); onNavigate('saved'); }}
+          >
+            Saved Workflows
+          </a>
+        </li>
       </ul>
 
       <div className="navbar-actions">
