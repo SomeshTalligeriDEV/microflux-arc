@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import ReactFlow, {
   Background,
   BackgroundVariant,
+  ConnectionLineType,
   Controls,
   Handle,
   MarkerType,
@@ -13,6 +14,7 @@ import ReactFlow, {
   type Node,
   type NodeChange,
   type NodeProps,
+  type ReactFlowInstance,
   addEdge,
   applyEdgeChanges,
   applyNodeChanges,
@@ -64,6 +66,12 @@ interface CanvasEdgeData {
   id: string;
   source: string;
   target: string;
+}
+
+interface PaletteDragPreview {
+  def: NodeDefinition;
+  clientX: number;
+  clientY: number;
 }
 
 const MicrofluxNode: React.FC<NodeProps<CanvasNodeData>> = ({ data, selected }) => {
@@ -165,6 +173,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployedAppId, setDeployedAppId] = useState<number>(0);
   const [viewportInitialized, setViewportInitialized] = useState(false);
+  const [paletteDragPreview, setPaletteDragPreview] = useState<PaletteDragPreview | null>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const flowInstanceRef = useRef<ReactFlowInstance<CanvasNodeData, Edge> | null>(null);
+  const paletteDragStartRef = useRef<{ def: NodeDefinition; x: number; y: number } | null>(null);
+  const suppressNextPaletteClickRef = useRef(false);
+  const paletteDragFrameRef = useRef<number | null>(null);
 
   // Load contract state on mount
   useEffect(() => {
@@ -255,11 +269,13 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   }, []);
 
   const handleConnect = useCallback((connection: Connection) => {
-    if (!connection.source || !connection.target) return;
+    const source = connection.source;
+    const target = connection.target;
+    if (!source || !target) return;
 
     setEdges((currentEdges) => {
       const exists = currentEdges.some(
-        (edge) => edge.source === connection.source && edge.target === connection.target,
+        (edge) => edge.source === source && edge.target === target,
       );
       if (exists) return currentEdges;
 
@@ -267,15 +283,155 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         ...currentEdges,
         {
           id: `edge_${Date.now()}`,
-          source: connection.source,
-          target: connection.target,
+          source,
+          target,
         },
       ];
     });
   }, []);
 
+  const applyZoomAtClientPoint = useCallback((clientX: number, clientY: number, zoomDirection: number) => {
+    const instance = flowInstanceRef.current;
+    const container = canvasContainerRef.current;
+    if (!instance || !container) return;
+
+    const rect = container.getBoundingClientRect();
+    const currentZoom = instance.getZoom();
+    const factor = zoomDirection > 0 ? 1.1 : 0.9;
+    const nextZoom = Math.max(0.2, Math.min(2, currentZoom * factor));
+    if (nextZoom === currentZoom) return;
+
+    const flowPoint = instance.screenToFlowPosition({ x: clientX, y: clientY });
+    const nextX = clientX - rect.left - flowPoint.x * nextZoom;
+    const nextY = clientY - rect.top - flowPoint.y * nextZoom;
+
+    instance.setViewport({ x: nextX, y: nextY, zoom: nextZoom }, { duration: 80 });
+  }, []);
+
+  const handleZoomIn = useCallback(() => {
+    const container = canvasContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    applyZoomAtClientPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, 1);
+  }, [applyZoomAtClientPoint]);
+
+  const handleZoomOut = useCallback(() => {
+    const container = canvasContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    applyZoomAtClientPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, -1);
+  }, [applyZoomAtClientPoint]);
+
+  const handleResetView = useCallback(() => {
+    const instance = flowInstanceRef.current;
+    if (!instance) return;
+    instance.setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 120 });
+  }, []);
+
+  useEffect(() => {
+    const container = canvasContainerRef.current;
+    if (!container) return;
+
+    const onWheel = (event: WheelEvent) => {
+      const target = event.target as HTMLElement;
+      if (!container.contains(target)) return;
+      if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      applyZoomAtClientPoint(event.clientX, event.clientY, event.deltaY < 0 ? 1 : -1);
+    };
+
+    container.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', onWheel);
+    };
+  }, [applyZoomAtClientPoint]);
+
+  useEffect(() => {
+    const onMouseMove = (event: MouseEvent) => {
+      const start = paletteDragStartRef.current;
+      if (!start) return;
+
+      const moved = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+      if (moved < 5 && !paletteDragPreview) return;
+
+      if (paletteDragFrameRef.current) {
+        cancelAnimationFrame(paletteDragFrameRef.current);
+      }
+      paletteDragFrameRef.current = requestAnimationFrame(() => {
+        setPaletteDragPreview({
+          def: start.def,
+          clientX: event.clientX,
+          clientY: event.clientY,
+        });
+        paletteDragFrameRef.current = null;
+      });
+    };
+
+    const onMouseUp = (event: MouseEvent) => {
+      const start = paletteDragStartRef.current;
+      if (!start) return;
+
+      if (paletteDragPreview) {
+        suppressNextPaletteClickRef.current = true;
+        const instance = flowInstanceRef.current;
+        const container = canvasContainerRef.current;
+        if (instance && container) {
+          const rect = container.getBoundingClientRect();
+          const isInsideCanvas =
+            event.clientX >= rect.left &&
+            event.clientX <= rect.right &&
+            event.clientY >= rect.top &&
+            event.clientY <= rect.bottom;
+
+          if (isInsideCanvas) {
+            const flowPosition = instance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+
+            nodeCounter.current++;
+            const id = `node_${nodeCounter.current}_${Date.now()}`;
+            const newNode: CanvasNodeData = {
+              id,
+              type: start.def.type,
+              label: start.def.label,
+              category: start.def.category,
+              config: { ...start.def.defaultConfig },
+              position: {
+                x: flowPosition.x - 100,
+                y: flowPosition.y - 24,
+              },
+              icon: start.def.icon,
+              color: start.def.color,
+              isReal: start.def.isReal,
+            };
+            setNodes((prev) => [...prev, newNode]);
+            setSelectedNodeId(id);
+          }
+        }
+      }
+
+      paletteDragStartRef.current = null;
+      setPaletteDragPreview(null);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    return () => {
+      if (paletteDragFrameRef.current) {
+        cancelAnimationFrame(paletteDragFrameRef.current);
+      }
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [paletteDragPreview]);
+
   // Add node from palette
   const addNode = useCallback((def: NodeDefinition) => {
+    if (suppressNextPaletteClickRef.current) {
+      suppressNextPaletteClickRef.current = false;
+      return;
+    }
     nodeCounter.current++;
     const id = `node_${nodeCounter.current}_${Date.now()}`;
     const newNode: CanvasNodeData = {
@@ -786,7 +942,16 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                 <div
                   key={def.type}
                   className="node-item"
-                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    paletteDragStartRef.current = {
+                      def,
+                      x: e.clientX,
+                      y: e.clientY,
+                    };
+                  }}
                   onClick={() => addNode(def)}
                 >
                   <div
@@ -817,7 +982,10 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       </div>
 
       {/* ── Canvas ────────────────────────── */}
-      <div className="canvas-container canvas-container-reactflow">
+      <div
+        className="canvas-container canvas-container-reactflow"
+        ref={canvasContainerRef}
+      >
         <ReactFlow
           className="microflux-reactflow"
           nodes={flowNodes}
@@ -831,13 +999,24 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
             setSelectedNodeId(selectedFlowNodes[0]?.id ?? null);
           }}
           onPaneClick={() => setSelectedNodeId(null)}
+          onInit={(instance) => { flowInstanceRef.current = instance; }}
+          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+          connectOnClick={false}
+          connectionLineType={ConnectionLineType.Bezier}
+          connectionLineStyle={{ stroke: 'rgba(56, 189, 248, 0.55)', strokeWidth: 2 }}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           snapToGrid
           snapGrid={[20, 20]}
           deleteKeyCode={null}
-          minZoom={0.35}
-          maxZoom={1.6}
+          minZoom={0.2}
+          maxZoom={2}
+          translateExtent={[[-100000, -100000], [100000, 100000]]}
+          nodeExtent={[[-100000, -100000], [100000, 100000]]}
+          zoomOnScroll={false}
+          zoomOnPinch
+          zoomOnDoubleClick={false}
+          panOnDrag={[1, 2]}
           defaultEdgeOptions={{
             type: 'smoothstep',
             animated: true,
@@ -848,8 +1027,9 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           nodesDraggable
           nodesConnectable
           elementsSelectable
-          panOnScroll
-          selectionOnDrag
+          panOnScroll={false}
+          selectionOnDrag={false}
+          preventScrolling
           onMoveEnd={() => setViewportInitialized(true)}
         >
           <Background
@@ -878,6 +1058,99 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
             <div className="empty-state-title">Empty Canvas</div>
             <div className="empty-state-desc">
               Click nodes from the palette or use AI to generate a workflow
+            </div>
+          </div>
+        )}
+
+        <div
+          style={{
+            position: 'absolute',
+            top: '12px',
+            right: '12px',
+            display: 'flex',
+            gap: '4px',
+            zIndex: 20,
+          }}
+        >
+          <button
+            type="button"
+            title="Zoom In"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={handleZoomIn}
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--color-border)',
+              background: 'var(--color-bg-secondary)',
+              color: 'var(--color-text-secondary)',
+              cursor: 'pointer',
+              fontWeight: 700,
+              lineHeight: 1,
+            }}
+          >
+            +
+          </button>
+          <button
+            type="button"
+            title="Zoom Out"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={handleZoomOut}
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--color-border)',
+              background: 'var(--color-bg-secondary)',
+              color: 'var(--color-text-secondary)',
+              cursor: 'pointer',
+              fontWeight: 700,
+              lineHeight: 1,
+            }}
+          >
+            −
+          </button>
+          <button
+            type="button"
+            title="Reset View"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={handleResetView}
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--color-border)',
+              background: 'var(--color-bg-secondary)',
+              color: 'var(--color-text-secondary)',
+              cursor: 'pointer',
+              fontWeight: 700,
+              lineHeight: 1,
+            }}
+          >
+            ⟲
+          </button>
+        </div>
+
+        {paletteDragPreview && (
+          <div
+            className="microflux-node"
+            style={{
+              position: 'fixed',
+              left: paletteDragPreview.clientX - 100,
+              top: paletteDragPreview.clientY - 24,
+              minWidth: '200px',
+              opacity: 0.68,
+              pointerEvents: 'none',
+              zIndex: 999,
+            }}
+          >
+            <div className="microflux-node__header" style={{ borderLeftColor: paletteDragPreview.def.color }}>
+              <span className="microflux-node__icon">{paletteDragPreview.def.icon}</span>
+              <span className="microflux-node__title">{paletteDragPreview.def.label}</span>
+              {!paletteDragPreview.def.isReal && <span className="tag tag-sm tag-mock microflux-node__tag">MOCK</span>}
+            </div>
+            <div className="microflux-node__body">
+              <div className="microflux-node__type">{paletteDragPreview.def.type}</div>
             </div>
           </div>
         )}
