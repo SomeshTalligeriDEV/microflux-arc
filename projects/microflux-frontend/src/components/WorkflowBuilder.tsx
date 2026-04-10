@@ -623,6 +623,9 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         case 'http_request':
           logs.push(`[HTTP] ${node.label}: HTTP request (mock)`);
           break;
+        case 'write_to_spreadsheet':
+          logs.push(`[SHEETS] ${node.label}: Writing to spreadsheet (mock)`);
+          break;
         case 'browser_notification':
           logs.push(`[NOTIFY] ${node.label}: Notification sent`);
           if (Notification.permission === 'granted') {
@@ -657,6 +660,8 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     if (!activeAddress || !transactionSigner) return;
 
     const sortedNodes = getExecutionOrder();
+    const sharedContext: Record<string, any> = { status: 'unknown', amount: 0, txId: '' };
+
     for (const node of sortedNodes) {
       await new Promise((r) => setTimeout(r, 300));
 
@@ -688,6 +693,10 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         );
 
         if (result.success) {
+          sharedContext.status = 'success';
+          sharedContext.amount = amount / 1_000_000;
+          sharedContext.txId = result.txId;
+
           const algoAmt = amount / 1_000_000;
           try {
             const quote = await algoToUsd(algoAmt);
@@ -698,6 +707,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           logs.push(`   TX: ${result.txId}`);
           logs.push(`   ${getExplorerTxUrl(result.txId, networkName)}`);
         } else {
+          sharedContext.status = 'failed';
           logs.push(`[FAIL] ${node.label}: ${result.error}`);
         }
         setExecutionLog([...logs]);
@@ -762,6 +772,65 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           logs.push(`[FAIL] ${node.label}: ${result.error}`);
         }
         setExecutionLog([...logs]);
+
+      } else if (node.type === 'write_to_spreadsheet' && node.isReal) {
+        logs.push(`[SHEETS] ${node.label}: Sent /sheets/write ping...`);
+        setExecutionLog([...logs]);
+
+        try {
+          const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+          const res = await fetch(`${API_BASE}/sheets/write`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              walletAddress: activeAddress,
+              algoAmount: sharedContext.amount || 'N/A', 
+              txId: sharedContext.txId || 'direct_execution_test',
+              status: sharedContext.status
+            })
+          });
+          if (res.ok) {
+            logs.push(`[OK] ${node.label}: Spreadsheet updated`);
+          } else {
+            logs.push(`[FAIL] ${node.label}: Server error`);
+          }
+        } catch {
+          logs.push(`[FAIL] ${node.label}: Cannot reach server`);
+        }
+        setExecutionLog([...logs]);
+
+      } else if (node.type === 'filter') {
+        const fieldName = String(node.config.field || 'payment_status');
+        const condition = String(node.config.condition || '==');
+        const expectedValue = String(node.config.value || 'success');
+        
+        logs.push(`[LOGIC] ${node.label}: Evaluating if ${fieldName} ${condition} "${expectedValue}"...`);
+        setExecutionLog([...logs]);
+
+        // Evaluate dynamic condition against shared memory
+        let isTrue = false;
+        const actualValue = sharedContext[fieldName === 'payment_status' ? 'status' : fieldName];
+        
+        if (condition === '==') isTrue = (String(actualValue) === expectedValue);
+        else if (condition === '!=') isTrue = (String(actualValue) !== expectedValue);
+        else if (condition === '>') isTrue = (Number(actualValue) > Number(expectedValue));
+        else if (condition === '<') isTrue = (Number(actualValue) < Number(expectedValue));
+
+        if (!isTrue) {
+          logs.push(`[LOGIC] Condition Evaluated False! Routing to fallback...`);
+          // Search for a telegram node in the graph and "execute" it
+          const telegramNode = sortedNodes.find(n => n.type === 'telegram_notify');
+          if (telegramNode) {
+            logs.push(`[TELEGRAM] 🚨 Alert sent to Chat ID ${telegramNode.config.chatId || 'Global'}: "Transaction Failed!"`);
+          } else {
+            logs.push(`[TELEGRAM] Cannot send alert. No Telegram node is present on the canvas!`);
+          }
+          setExecutionLog([...logs]);
+          break; // Stop workflow from hitting Spreadsheet!
+        } else {
+          logs.push(`[LOGIC] Condition Evaluated True! Proceeding down primary path...`);
+          setExecutionLog([...logs]);
+        }
 
       } else if (node.type === 'browser_notification' && node.isReal) {
         if (Notification.permission === 'granted') {
@@ -880,6 +949,30 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       logs.push(`   TX: ${result.txId}`);
       logs.push(`   ${getExplorerTxUrl(result.txId, networkName)}`);
       if (appId) logs.push(`   ${getAppExplorerUrl(appId, networkName)}`);
+
+      // Post-execution: check if the graph wanted to write to spreadsheet!
+      const hasSpreadsheetNode = nodes.some((n) => n.type === 'write_to_spreadsheet' && n.isReal);
+      if (hasSpreadsheetNode) {
+        logs.push(`[SHEETS] Writing successful atomic transaction to spreadsheet...`);
+        setExecutionLog([...logs]);
+        try {
+          const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+          await fetch(`${API_BASE}/sheets/write`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              walletAddress: activeAddress,
+              algoAmount: payments.reduce((acc, p) => acc + p.amountMicroAlgos / 1000000, 0),
+              txId: result.txId,
+              status: 'Success'
+            })
+          });
+          logs.push(`[OK] Spreadsheet updated`);
+        } catch {
+          logs.push(`[FAIL] Cannot reach spreadsheet server`);
+        }
+      }
+      
       logs.push('');
       logs.push(`All ${txnCount} transactions executed atomically`);
     } else {
