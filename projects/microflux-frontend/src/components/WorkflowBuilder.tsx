@@ -662,6 +662,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
 
     const sortedNodes = getExecutionOrder();
     const sharedContext: Record<string, any> = { status: 'unknown', amount: 0, txId: '' };
+    const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
 
     for (const node of sortedNodes) {
       await new Promise((r) => setTimeout(r, 300));
@@ -697,6 +698,9 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         );
 
         if (result.success) {
+          sharedContext.status = 'success';
+          sharedContext.amount = amount;
+          sharedContext.txId = result.txId;
           const algoAmt = Number(microAlgosToAlgo(amount));
           try {
             const quote = await algoToUsd(algoAmt);
@@ -708,6 +712,8 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           logs.push(`   ${getExplorerTxUrl(result.txId, networkName)}`);
         } else {
           sharedContext.status = 'failed';
+          sharedContext.txId = '';
+          sharedContext.amount = amount;
           logs.push(`[FAIL] ${node.label}: ${result.error}`);
         }
         setExecutionLog([...logs]);
@@ -778,8 +784,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         setExecutionLog([...logs]);
 
         try {
-          const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
-          const res = await fetch(`${API_BASE}/sheets/write`, {
+          const res = await fetch(`${apiBase}/sheets/write`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -792,14 +797,16 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           if (res.ok) {
             logs.push(`[OK] ${node.label}: Spreadsheet updated`);
           } else {
-            logs.push(`[FAIL] ${node.label}: Server error`);
+            const errText = await res.text();
+            logs.push(`[FAIL] ${node.label}: ${errText || 'Server error'}`);
           }
-        } catch {
-          logs.push(`[FAIL] ${node.label}: Cannot reach server`);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Cannot reach server';
+          logs.push(`[FAIL] ${node.label}: ${msg}`);
         }
         setExecutionLog([...logs]);
 
-      } else if (node.type === 'filter') {
+      } else if (node.type === 'filter' || node.type === 'filter_condition') {
         const fieldName = String(node.config.field || 'payment_status');
         const condition = String(node.config.condition || '==');
         const expectedValue = String(node.config.value || 'success');
@@ -900,6 +907,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   // MODE C: Atomic transaction group (payments + ASA + app call combined)
   const executeAtomic = useCallback(async (logs: string[]) => {
     if (!activeAddress || !transactionSigner) return;
+    const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
 
     const payments: Array<{ receiver: string; amountMicroAlgos: number }> = [];
     const asaTransfers: Array<{ receiver: string; assetId: number; amount: number }> = [];
@@ -927,13 +935,20 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     // Generate workflow hash for contract
     const workflowData = { nodes: nodes.map(n => ({ type: n.type, config: n.config })), timestamp: Date.now() };
     const wfHash = await hashWorkflow(workflowData);
-    const appId = getAppId();
+    const hasAppCallNode = nodes.some((n) => n.type === 'app_call' && n.isReal);
+    const appId = hasAppCallNode ? getAppId() : 0;
 
-    const txnCount = payments.length + asaTransfers.length + (appId ? 1 : 0);
+    if (hasAppCallNode && !appId) {
+      logs.push('[FAIL] app_call node exists but no App ID is configured. Set VITE_APP_ID in frontend .env.');
+      setExecutionLog([...logs]);
+      return;
+    }
+
+    const txnCount = payments.length + asaTransfers.length + (hasAppCallNode ? 1 : 0);
     logs.push(`Building atomic group: ${txnCount} transactions`);
     if (payments.length) logs.push(`   ${payments.length} payment(s)`);
     if (asaTransfers.length) logs.push(`   ${asaTransfers.length} ASA transfer(s)`);
-    if (appId) logs.push(`   1 app call (App ${appId})`);
+    if (hasAppCallNode) logs.push(`   1 app call (App ${appId})`);
     logs.push(`Requesting wallet signature for entire group...`);
     setExecutionLog([...logs]);
 
@@ -942,7 +957,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       {
         payments: payments.length > 0 ? payments : undefined,
         asaTransfers: asaTransfers.length > 0 ? asaTransfers : undefined,
-        appCall: appId ? { workflowHash: wfHash, appId } : undefined,
+        appCall: hasAppCallNode ? { workflowHash: wfHash, appId } : undefined,
       },
       transactionSigner as any,
     );
@@ -951,7 +966,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       logs.push(`[OK] Atomic group confirmed.`);
       logs.push(`   TX: ${result.txId}`);
       logs.push(`   ${getExplorerTxUrl(result.txId, networkName)}`);
-      if (appId) logs.push(`   ${getAppExplorerUrl(appId, networkName)}`);
+      if (hasAppCallNode) logs.push(`   ${getAppExplorerUrl(appId, networkName)}`);
 
       // Post-execution: check if the graph wanted to write to spreadsheet!
       const hasSpreadsheetNode = nodes.some((n) => n.type === 'write_to_spreadsheet' && n.isReal);
@@ -959,8 +974,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         logs.push(`[SHEETS] Writing successful atomic transaction to spreadsheet...`);
         setExecutionLog([...logs]);
         try {
-          const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
-          await fetch(`${API_BASE}/sheets/write`, {
+          const res = await fetch(`${apiBase}/sheets/write`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -970,9 +984,15 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
               status: 'Success'
             })
           });
-          logs.push(`[OK] Spreadsheet updated`);
-        } catch {
-          logs.push(`[FAIL] Cannot reach spreadsheet server`);
+          if (res.ok) {
+            logs.push(`[OK] Spreadsheet updated`);
+          } else {
+            const errText = await res.text();
+            logs.push(`[FAIL] Spreadsheet write failed: ${errText || 'Server error'}`);
+          }
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Cannot reach spreadsheet server';
+          logs.push(`[FAIL] ${msg}`);
         }
       }
       
