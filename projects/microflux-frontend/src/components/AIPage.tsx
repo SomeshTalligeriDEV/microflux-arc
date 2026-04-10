@@ -22,7 +22,7 @@ const AIPage: React.FC<AIPageProps> = ({ onLoadDraft, activeAddress }) => {
   return (
     <div className="page-container animate-fadeIn">
       <div className="page-header">
-        <h1 className="page-title">AI COPILOT</h1>
+        <h1 className="page-title">FluxBot</h1>
         <p className="page-subtitle">
           Describe your workflow in natural language. AI builds it for you.
         </p>

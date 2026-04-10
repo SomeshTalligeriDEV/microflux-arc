@@ -117,7 +117,7 @@ const AICopilotPanel: React.FC<AICopilotPanelProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ fontSize: '1.2rem' }}>[BOT]</span>
           <span className="text-sm font-bold text-uppercase" style={{ letterSpacing: '0.06em' }}>
-            AI COPILOT
+            FluxBot
           </span>
         </div>
         <div className="ai-panel-badge">
