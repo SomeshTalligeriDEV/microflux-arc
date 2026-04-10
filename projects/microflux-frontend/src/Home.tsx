@@ -14,6 +14,12 @@ import { api, type Workflow } from './services/api';
 import SavedWorkflows from './components/SavedWorkflows';
 import TelegramLinkPanel from './components/TelegramLinkPanel';
 
+type DraftWorkflowPayload = {
+  name?: string;
+  nodes?: unknown[];
+  edges?: unknown[];
+};
+
 const Home: React.FC = () => {
   const [currentPage, setCurrentPage] = useState('home');
   const [openWalletModal, setOpenWalletModal] = useState(false);
@@ -130,6 +136,32 @@ const Home: React.FC = () => {
     handleLoadWorkflow(nodes, edges, workflow.name, workflow.id);
   }, [handleLoadWorkflow, normalizeLoadedEdge, normalizeLoadedNode]);
 
+  const handleLoadDraft = useCallback((draftWorkflow: DraftWorkflowPayload) => {
+    const rawNodes = Array.isArray(draftWorkflow?.nodes) ? draftWorkflow.nodes : [];
+    const rawEdges = Array.isArray(draftWorkflow?.edges) ? draftWorkflow.edges : [];
+
+    // AI may return config either at node.config or node.data.config.
+    const nodes = rawNodes.map((node: any, index) => {
+      const normalized = normalizeLoadedNode(node, index);
+      const data = node?.data && typeof node.data === 'object' ? node.data : {};
+      return {
+        ...normalized,
+        label: String(data?.label ?? normalized.label),
+        config: (data?.config ?? normalized.config) as Record<string, unknown>,
+      };
+    });
+
+    const edges = rawEdges
+      .map((edge: any, index) => normalizeLoadedEdge(edge, index))
+      .filter((edge) => edge.source && edge.target);
+
+    setWorkflowNodes(nodes);
+    setWorkflowEdges(edges);
+    setWorkflowName(String(draftWorkflow?.name ?? 'AI Draft Workflow'));
+    setSelectedWorkflowId(null); // Draft only; not saved yet.
+    setCurrentPage('builder');
+  }, [normalizeLoadedEdge, normalizeLoadedNode]);
+
   const renderPage = () => {
     switch (currentPage) {
       case 'builder':
@@ -155,7 +187,7 @@ const Home: React.FC = () => {
       case 'ai':
         return (
           <AIPage
-            onLoadWorkflow={handleLoadWorkflow}
+            onLoadDraft={handleLoadDraft}
             activeAddress={activeAddress ?? null}
           />
         );

@@ -114,11 +114,18 @@ const MicrofluxNode: React.FC<NodeProps<CanvasNodeData>> = ({ data, selected }) 
   );
 };
 
-const nodeTypes = { microfluxNode: MicrofluxNode };
+const nodeTypes: Record<string, React.FC<NodeProps<CanvasNodeData>>> = {
+  microfluxNode: MicrofluxNode,
+  // Explicitly register all workflow node type keys so AI-generated types
+  // like `telegram_command` render via the shared MicrofluxNode renderer.
+  ...Object.fromEntries(NODE_DEFINITIONS.map((def) => [def.type, MicrofluxNode])),
+};
+
+const registeredNodeTypes = new Set(Object.keys(nodeTypes));
 
 const toFlowNode = (node: CanvasNodeData): Node<CanvasNodeData> => ({
   id: node.id,
-  type: 'microfluxNode',
+  type: registeredNodeTypes.has(node.type) ? node.type : 'microfluxNode',
   position: node.position,
   data: node,
 });
@@ -207,12 +214,13 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const handleLoadWorkflowFromAi = useCallback((aiNodes: AINode[], aiEdges: AIEdge[]) => {
     const canvasNodes: CanvasNodeData[] = aiNodes.map((n) => {
       const def = NODE_DEFINITIONS.find((d) => d.type === n.type);
+      const rawData = (n as any)?.data && typeof (n as any).data === 'object' ? (n as any).data : {};
       return {
         id: n.id,
         type: n.type,
-        label: n.label,
+        label: String(rawData?.label ?? n.label),
         category: n.category as NodeCategory,
-        config: n.config,
+        config: (rawData?.config ?? n.config ?? {}) as Record<string, unknown>,
         position: n.position,
         icon: def?.icon ?? '▪',
         color: def?.color ?? '#666',
@@ -234,12 +242,13 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     if (initialNodes && initialNodes.length > 0) {
       const canvasNodes: CanvasNodeData[] = initialNodes.map((n) => {
         const def = NODE_DEFINITIONS.find((d) => d.type === n.type);
+        const rawData = (n as any)?.data && typeof (n as any).data === 'object' ? (n as any).data : {};
         return {
           id: n.id,
           type: n.type,
-          label: n.label,
+          label: String(rawData?.label ?? n.label),
           category: n.category as NodeCategory,
-          config: n.config,
+          config: (rawData?.config ?? n.config ?? {}) as Record<string, unknown>,
           position: n.position,
           icon: def?.icon ?? '▪',
           color: def?.color ?? '#666',

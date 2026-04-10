@@ -3,11 +3,11 @@ import AICopilotPanel from './AICopilotPanel';
 import type { AINode, AIEdge } from '../services/aiService';
 
 interface AIPageProps {
-  onLoadWorkflow: (nodes: AINode[], edges: AIEdge[], name: string) => void;
+  onLoadDraft: (draftWorkflow: { name?: string; nodes?: unknown[]; edges?: unknown[] }) => void;
   activeAddress: string | null;
 }
 
-const AIPage: React.FC<AIPageProps> = ({ onLoadWorkflow, activeAddress }) => {
+const AIPage: React.FC<AIPageProps> = ({ onLoadDraft, activeAddress }) => {
   const [generatedWorkflow, setGeneratedWorkflow] = useState<{
     nodes: AINode[];
     edges: AIEdge[];
@@ -16,8 +16,8 @@ const AIPage: React.FC<AIPageProps> = ({ onLoadWorkflow, activeAddress }) => {
 
   const handleLoadWorkflow = useCallback((nodes: AINode[], edges: AIEdge[], name: string) => {
     setGeneratedWorkflow({ nodes, edges, name });
-    onLoadWorkflow(nodes, edges, name);
-  }, [onLoadWorkflow]);
+    onLoadDraft({ name, nodes, edges });
+  }, [onLoadDraft]);
 
   return (
     <div className="page-container animate-fadeIn">
