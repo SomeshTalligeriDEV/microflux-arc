@@ -5,11 +5,21 @@ import intentRoutes from './routes/intent.routes';
 import { handleTelegramUpdate } from './controllers/webhook.controller';
 import userRoutes from './routes/user.routes';
 import workflowRoutes from './routes/workflow.routes';
-import executionRoutes from './routes/execution.routes';
+import sheetsRoutes from './routes/sheets.routes';
 import { parseIntent as parseIntentFromAi } from './core/ai/intentParser';
 
+import path from 'path';
+import fs from 'fs';
 
-dotenv.config();
+// Force dotenv to re-load .env even after tsx's failed attempt
+const envPath = path.resolve(process.cwd(), '.env');
+const result = dotenv.config({ path: envPath, override: true });
+if (result.error) {
+  console.error('[ENV] Failed to load .env:', result.error.message);
+} else {
+  console.log('[ENV] Loaded', Object.keys(result.parsed || {}).length, 'variables from', envPath);
+}
+
 
 const app: Express = express();
 const port = process.env.PORT || 8000;
@@ -133,9 +143,8 @@ app.use('/api/user', userRoutes);
 //workflow routes
 app.use('/api/workflows', workflowRoutes);
 
-//execution bridge routes
-app.use('/api/execution', executionRoutes);
-
+//sheets routes
+app.use('/api/sheets', sheetsRoutes);
 
 pollTelegram();
 

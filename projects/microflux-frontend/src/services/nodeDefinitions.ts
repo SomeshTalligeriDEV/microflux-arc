@@ -122,6 +122,16 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     color: CATEGORY_COLORS.action,
     defaultConfig: { url: '', method: 'GET', headers: {} },
   },
+  {
+    type: 'write_to_spreadsheet',
+    label: 'Write to Spreadsheet',
+    description: 'Log data directly to an Excel/CSV file',
+    category: 'action',
+    icon: '▤',
+    isReal: true,
+    color: CATEGORY_COLORS.action,
+    defaultConfig: { mapToColumns: true },
+  },
 
   // ── LOGIC ───────────────────────────────────
   {
@@ -142,7 +152,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     icon: '⎇',
     isReal: false,
     color: CATEGORY_COLORS.logic,
-    defaultConfig: { condition: '', field: '', value: '' },
+    defaultConfig: { condition: '==', field: 'payment_status', value: 'success' },
   },
   {
     type: 'debug_log',
