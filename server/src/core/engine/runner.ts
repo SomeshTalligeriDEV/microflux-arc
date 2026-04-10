@@ -42,7 +42,7 @@ const normalizeNodeType = (type: string): string => {
 };
 
 export const executeWorkflow = async (
-  workflow: { nodes?: WorkflowNode[] },
+  workflow: { nodes?: WorkflowNode[]; edges?: unknown[] },
   context: ExecutionContext = {},
 ): Promise<ExecutionResult> => {
   const nodes = Array.isArray(workflow?.nodes) ? workflow.nodes : [];

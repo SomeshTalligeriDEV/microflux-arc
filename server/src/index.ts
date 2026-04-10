@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import intentRoutes from './routes/intent.routes';
 import { handleTelegramUpdate } from './controllers/webhook.controller';
+import userRoutes from './routes/user.routes';
+import workflowRoutes from './routes/workflow.routes';
 
 
 dotenv.config();
@@ -50,7 +52,11 @@ const pollTelegram = async () => {
   }
 };
 
-//telegram webhook route 
+//user routes
+app.use('/api/user', userRoutes);
+
+//workflow routes
+app.use('/api/workflows', workflowRoutes);
 
 
 pollTelegram();
