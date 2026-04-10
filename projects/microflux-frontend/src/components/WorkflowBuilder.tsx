@@ -320,10 +320,17 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
     setNodes((currentNodes) => {
       const updated = applyNodeChanges(changes, currentNodes.map(toFlowNode));
-      return updated.map((node) => ({
-        ...(node.data as CanvasNodeData),
-        position: node.position,
-      }));
+      return updated.map((node) => {
+        // Safe position to prevent disappearing node bug when shaken
+        const safeX = typeof node.position.x === 'number' && !isNaN(node.position.x) ? node.position.x : 0;
+        const safeY = typeof node.position.y === 'number' && !isNaN(node.position.y) ? node.position.y : 0;
+        
+        return {
+          ...(node.data as CanvasNodeData),
+          id: node.id,
+          position: { x: safeX, y: safeY },
+        };
+      });
     });
   }, []);
 
@@ -1122,8 +1129,8 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           deleteKeyCode={null}
           minZoom={0.2}
           maxZoom={2}
-          translateExtent={[[-100000, -100000], [100000, 100000]]}
-          nodeExtent={[[-100000, -100000], [100000, 100000]]}
+          translateExtent={[[-5000, -5000], [5000, 5000]]}
+          nodeExtent={[[-5000, -5000], [5000, 5000]]}
           zoomOnScroll={false}
           zoomOnPinch
           zoomOnDoubleClick={false}
