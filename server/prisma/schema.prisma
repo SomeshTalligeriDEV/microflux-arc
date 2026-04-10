@@ -1,0 +1,36 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+model User {
+  walletAddress String   @id // Primary Key is the Wallet
+  nfd           String?  // e.g., "binit.algo" (Cached)
+  telegramId    String?  @unique // Their Telegram Chat ID
+  linkCode      String?  @unique // Temporary code for linking
+  createdAt     DateTime @default(now())
+
+  workflows     Workflow[]
+}
+
+model Workflow {
+  id              String   @id @default(uuid())
+  name            String
+  triggerKeyword  String?  
+  nodes           Json     
+  edges           Json     
+  isActive        Boolean  @default(true)
+  
+  userWallet      String
+  user            User     @relation(fields: [userWallet], references: [walletAddress])
+}
