@@ -86,7 +86,7 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
       return res.sendStatus(200);
     }
 
-    const intent = await parseIntent(userText, linkedUser.walletAddress);
+    const intent = await parseIntent(userText, linkedUser.walletAddress, 'telegram');
 
     if (debug) {
       console.log('[WEBHOOK DEBUG] intent decision', intent);

@@ -1,28 +1,24 @@
 import React, { useState, useCallback } from 'react';
-import { generateWorkflow, explainWorkflow, type AIWorkflowResult, type AINode, type AIEdge } from '../services/aiService';
+import { generateWorkflow, type AIWorkflowResult, type AINode, type AIEdge } from '../services/aiService';
 
 interface AICopilotPanelProps {
   onLoadWorkflow: (nodes: AINode[], edges: AIEdge[], name: string) => void;
-  groqApiKey: string;
-  onApiKeyChange: (key: string) => void;
+  activeAddress: string | null;
 }
 
 const AICopilotPanel: React.FC<AICopilotPanelProps> = ({
   onLoadWorkflow,
-  groqApiKey,
-  onApiKeyChange,
+  activeAddress,
 }) => {
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AIWorkflowResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showKeyInput, setShowKeyInput] = useState(false);
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim()) return;
-    if (!groqApiKey.trim()) {
-      setShowKeyInput(true);
-      setError('Please enter your Groq API key first.');
+    if (!activeAddress) {
+      setError('Please connect your wallet first.');
       return;
     }
 
@@ -31,32 +27,14 @@ const AICopilotPanel: React.FC<AICopilotPanelProps> = ({
     setResult(null);
 
     try {
-      const workflow = await generateWorkflow(prompt, groqApiKey);
+      const workflow = await generateWorkflow(prompt, activeAddress);
       setResult(workflow);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
-  }, [prompt, groqApiKey]);
-
-  const handleExplain = useCallback(async () => {
-    if (!result) return;
-    if (!groqApiKey.trim()) return;
-
-    setLoading(true);
-    try {
-      const explanation = await explainWorkflow(
-        { nodes: result.nodes, edges: result.edges },
-        groqApiKey
-      );
-      setResult({ ...result, explanation });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to explain workflow');
-    } finally {
-      setLoading(false);
-    }
-  }, [result, groqApiKey]);
+  }, [prompt, activeAddress]);
 
   const handleLoad = useCallback(() => {
     if (!result) return;
@@ -81,33 +59,11 @@ const AICopilotPanel: React.FC<AICopilotPanelProps> = ({
         </div>
         <div className="ai-panel-badge">
           <span className="status-dot status-dot-success"></span>
-          GROQ
+          BACKEND AI
         </div>
       </div>
 
       <div className="ai-panel-body">
-        {/* API Key Input */}
-        {(showKeyInput || !groqApiKey) && (
-          <div style={{ marginBottom: '16px' }}>
-            <label
-              className="text-xs text-uppercase"
-              style={{ display: 'block', marginBottom: '6px', color: 'var(--color-text-tertiary)', letterSpacing: '0.08em', fontWeight: 600 }}
-            >
-              Groq API Key
-            </label>
-            <input
-              type="password"
-              className="input"
-              placeholder="gsk_..."
-              value={groqApiKey}
-              onChange={(e) => onApiKeyChange(e.target.value)}
-            />
-            <p className="text-xs" style={{ marginTop: '4px', color: 'var(--color-text-tertiary)' }}>
-              Get free key at <a href="https://console.groq.com" target="_blank" rel="noopener noreferrer">console.groq.com</a>
-            </p>
-          </div>
-        )}
-
         {/* Prompt Area */}
         <label
           className="text-xs text-uppercase"
@@ -146,7 +102,7 @@ const AICopilotPanel: React.FC<AICopilotPanelProps> = ({
           <button
             className="btn btn-accent"
             onClick={handleGenerate}
-            disabled={loading || !prompt.trim()}
+            disabled={loading || !prompt.trim() || !activeAddress}
             style={{ flex: 1 }}
           >
             {loading ? (
@@ -158,11 +114,6 @@ const AICopilotPanel: React.FC<AICopilotPanelProps> = ({
               '[EXEC] GENERATE WORKFLOW'
             )}
           </button>
-          {!groqApiKey && (
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowKeyInput(true)}>
-              API Key required
-            </button>
-          )}
         </div>
 
         {/* Error */}
@@ -229,9 +180,6 @@ const AICopilotPanel: React.FC<AICopilotPanelProps> = ({
             <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
               <button className="btn btn-primary" onClick={handleLoad} style={{ flex: 1 }}>
                 ✓ LOAD INTO CANVAS
-              </button>
-              <button className="btn btn-outline btn-sm" onClick={handleExplain}>
-                EXPLAIN
               </button>
             </div>
           </div>

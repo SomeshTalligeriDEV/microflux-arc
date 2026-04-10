@@ -8,6 +8,7 @@ interface NavbarProps {
   onConnectWallet: () => void;
   balance: number | null; // ALGO balance
   networkName: string;
+  isLinked?: boolean;
 }
 
 const Navbar: React.FC<NavbarProps> = ({
@@ -17,6 +18,7 @@ const Navbar: React.FC<NavbarProps> = ({
   onConnectWallet,
   balance,
   networkName,
+  isLinked = false,
 }) => {
   return (
     <nav className="navbar">
@@ -129,6 +131,22 @@ const Navbar: React.FC<NavbarProps> = ({
             }`,
           }}>
             {networkName}
+          </span>
+        )}
+
+        {activeAddress && (
+          <span style={{
+            fontSize: 'var(--text-xs)',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            color: isLinked ? 'var(--color-success)' : 'var(--color-error)',
+            background: isLinked ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+            padding: '3px 8px',
+            borderRadius: 'var(--radius-sm)',
+            border: `1px solid ${isLinked ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+          }}>
+            {isLinked ? 'TG Linked' : 'TG Unlinked'}
           </span>
         )}
       </div>

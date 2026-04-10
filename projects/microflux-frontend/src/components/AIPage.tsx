@@ -4,11 +4,10 @@ import type { AINode, AIEdge } from '../services/aiService';
 
 interface AIPageProps {
   onLoadWorkflow: (nodes: AINode[], edges: AIEdge[], name: string) => void;
-  groqApiKey: string;
-  onApiKeyChange: (key: string) => void;
+  activeAddress: string | null;
 }
 
-const AIPage: React.FC<AIPageProps> = ({ onLoadWorkflow, groqApiKey, onApiKeyChange }) => {
+const AIPage: React.FC<AIPageProps> = ({ onLoadWorkflow, activeAddress }) => {
   const [generatedWorkflow, setGeneratedWorkflow] = useState<{
     nodes: AINode[];
     edges: AIEdge[];
@@ -34,8 +33,7 @@ const AIPage: React.FC<AIPageProps> = ({ onLoadWorkflow, groqApiKey, onApiKeyCha
         <div>
           <AICopilotPanel
             onLoadWorkflow={handleLoadWorkflow}
-            groqApiKey={groqApiKey}
-            onApiKeyChange={onApiKeyChange}
+            activeAddress={activeAddress}
           />
         </div>
 

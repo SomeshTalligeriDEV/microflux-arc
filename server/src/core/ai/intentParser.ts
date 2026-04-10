@@ -20,20 +20,30 @@ type FlowEdge = {
 
 export type IntentActionResult =
   | { action: 'execute'; workflowId: string; reason: string }
-  | { action: 'build'; reason: string; workflow: { name: string; triggerKeyword: string; nodes: FlowNode[]; edges: FlowEdge[] } }
+  | { action: 'build'; reason: string; workflow: { name: string; triggerKeyword: string; explanation: string; nodes: FlowNode[]; edges: FlowEdge[] } }
   | { action: 'none'; reason: string };
 
-export const parseIntent = async (userText: string, walletAddress: string): Promise<IntentActionResult> => {
+export const parseIntent = async (
+  userText: string,
+  walletAddress: string,
+  source: 'web' | 'telegram',
+): Promise<IntentActionResult> => {
   let decision: IntentActionResult | null = null;
   const debug = process.env.MFX_DEBUG_AI === '1' || process.env.MFX_DEBUG_AI === 'true';
   const prompt = `Wallet: ${walletAddress}\nUser message: ${userText}`;
+  const contextRule = source === 'web'
+    ? "CONTEXT: The user is in the Web Canvas Builder. Assume all requests are to CREATE/BUILD new workflows. Go straight to 'build_new_workflow' unless they explicitly use the word 'Run' or 'Execute'."
+    : "CONTEXT: The user is in Telegram. They might want to build a new workflow, or execute an existing one. Always search first.";
+  const dynamicSystemPrompt = `${AGENT_SYSTEM_PROMPT}\n\n${contextRule}`;
   let searchAlreadyCalled = false;
 
   if (debug) {
     console.log('[AI DEBUG] parseIntent:start', {
+      source,
       walletAddress,
       userText,
       prompt,
+      contextRule,
     });
   }
 
@@ -125,6 +135,7 @@ export const parseIntent = async (userText: string, walletAddress: string): Prom
         reason: z.string(),
         name: z.string(),
         triggerKeyword: z.string(),
+        explanation: z.string().describe('A human-readable explanation of what this workflow does step-by-step'),
         nodes: z.array(z.any()),
         edges: z.array(z.any()),
       }),
@@ -132,12 +143,14 @@ export const parseIntent = async (userText: string, walletAddress: string): Prom
         reason,
         name,
         triggerKeyword,
+        explanation,
         nodes,
         edges,
       }: {
         reason: string;
         name: string;
         triggerKeyword: string;
+        explanation: string;
         nodes: FlowNode[];
         edges: FlowEdge[];
       }) => {
@@ -162,7 +175,7 @@ export const parseIntent = async (userText: string, walletAddress: string): Prom
         decision = { 
           action: 'build', 
           reason, 
-          workflow: { name, triggerKeyword, nodes: scaledNodes, edges } 
+          workflow: { name, triggerKeyword, explanation, nodes: scaledNodes, edges } 
         };
 
         if (debug) {
@@ -170,6 +183,7 @@ export const parseIntent = async (userText: string, walletAddress: string): Prom
             action: decision.action,
             workflowName: decision.workflow.name,
             triggerKeyword: decision.workflow.triggerKeyword,
+            explanation: decision.workflow.explanation,
             nodesCount: decision.workflow.nodes.length,
             edgesCount: decision.workflow.edges.length,
           });
@@ -183,7 +197,7 @@ export const parseIntent = async (userText: string, walletAddress: string): Prom
   try {
     const llmResult = await generateText({
       model,
-      system: AGENT_SYSTEM_PROMPT,
+      system: dynamicSystemPrompt,
       prompt,
       toolChoice: 'auto',
       tools: microFluxTools,

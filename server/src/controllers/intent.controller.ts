@@ -14,7 +14,7 @@ export const parseIntent = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'walletAddress is required' });
     }
 
-    const decision = await parseIntentFromAi(prompt, walletAddress);
+    const decision = await parseIntentFromAi(prompt, walletAddress, 'web');
     return res.status(200).json(decision);
   } catch (error) {
     console.error("Intent Parsing Error:", error);

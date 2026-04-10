@@ -154,7 +154,6 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   onBalanceUpdate,
 }) => {
   const [activeRightTab, setActiveRightTab] = useState<'properties' | 'simulate' | 'ai'>('properties');
-  const [groqApiKey, setGroqApiKey] = useState(import.meta.env.VITE_GROQ_API_KEY || '');
   const [nodes, setNodes] = useState<CanvasNodeData[]>([]);
   const [edges, setEdges] = useState<CanvasEdgeData[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -1233,8 +1232,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           <div className="panel-body animate-fadeIn">
             <AICopilotPanel
               onLoadWorkflow={(aiNodes, aiEdges) => handleLoadWorkflowFromAi(aiNodes, aiEdges)}
-              groqApiKey={groqApiKey}
-              onApiKeyChange={setGroqApiKey}
+              activeAddress={activeAddress}
             />
           </div>
         ) : activeRightTab === 'properties' ? (

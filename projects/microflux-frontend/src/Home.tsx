@@ -10,15 +10,16 @@ import ConnectWallet from './components/ConnectWallet';
 import type { AINode, AIEdge } from './services/aiService';
 import { fetchAccountBalance } from './services/walletService';
 import { getAlgodConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs';
+import { api } from './services/api';
 
 const Home: React.FC = () => {
   const [currentPage, setCurrentPage] = useState('home');
   const [openWalletModal, setOpenWalletModal] = useState(false);
-  const [groqApiKey, setGroqApiKey] = useState('');
   const { activeAddress, transactionSigner } = useWallet();
 
   // Wallet balance state
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [isLinked, setIsLinked] = useState(false);
 
   // Network name
   const algoConfig = getAlgodConfigFromViteEnvironment();
@@ -38,6 +39,20 @@ const Home: React.FC = () => {
     } else {
       setWalletBalance(null);
     }
+  }, [activeAddress]);
+
+  useEffect(() => {
+    if (!activeAddress) {
+      setIsLinked(false);
+      return;
+    }
+
+    api.getLinkStatus(activeAddress)
+      .then((data) => setIsLinked(Boolean(data.linked)))
+      .catch((error) => {
+        console.warn('[MICROFLUX] Failed to fetch Telegram link status', error);
+        setIsLinked(false);
+      });
   }, [activeAddress]);
 
   const handleNavigate = useCallback((page: string) => {
@@ -85,8 +100,7 @@ const Home: React.FC = () => {
         return (
           <AIPage
             onLoadWorkflow={handleLoadWorkflow}
-            groqApiKey={groqApiKey}
-            onApiKeyChange={setGroqApiKey}
+            activeAddress={activeAddress ?? null}
           />
         );
       case 'market':
@@ -111,6 +125,7 @@ const Home: React.FC = () => {
         onConnectWallet={toggleWalletModal}
         balance={walletBalance}
         networkName={networkName}
+        isLinked={isLinked}
       />
 
       {renderPage()}

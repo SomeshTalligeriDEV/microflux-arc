@@ -5,6 +5,7 @@ import intentRoutes from './routes/intent.routes';
 import { handleTelegramUpdate } from './controllers/webhook.controller';
 import userRoutes from './routes/user.routes';
 import workflowRoutes from './routes/workflow.routes';
+import { parseIntent as parseIntentFromAi } from './core/ai/intentParser';
 
 
 dotenv.config();
@@ -25,6 +26,23 @@ app.get('/health', (req: Request, res: Response) => {
 
 //intent parsing route
 app.use('/api/intent', intentRoutes);
+
+// AI processing route for web UI
+app.post('/api/ai/process', async (req: Request, res: Response) => {
+  try {
+    const { walletAddress, prompt } = req.body;
+
+    if (!walletAddress || !prompt) {
+      return res.status(400).json({ error: 'walletAddress and prompt are required' });
+    }
+
+    const result = await parseIntentFromAi(String(prompt), String(walletAddress), 'web');
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('AI process route error:', error);
+    return res.status(500).json({ error: 'Failed to process AI intent' });
+  }
+});
 
 //telegram 
 const pollTelegram = async () => {

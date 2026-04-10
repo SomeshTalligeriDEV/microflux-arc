@@ -33,3 +33,39 @@ export const generateTelegramLink = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to generate link code' });
   }
 };
+
+export const getUserStatus = async (req: Request, res: Response) => {
+  const walletAddress = String(req.params.walletAddress || '').trim();
+
+  if (!walletAddress) {
+    return res.status(400).json({ error: 'walletAddress is required' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { walletAddress },
+      select: {
+        walletAddress: true,
+        telegramId: true,
+        nfd: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(200).json({
+        linked: false,
+        walletAddress,
+      });
+    }
+
+    return res.status(200).json({
+      linked: Boolean(user.telegramId),
+      walletAddress: user.walletAddress,
+      telegramId: user.telegramId,
+      nfd: user.nfd,
+    });
+  } catch (error) {
+    console.error('DB Error fetching user status:', error);
+    return res.status(500).json({ error: 'Failed to fetch user status' });
+  }
+};
