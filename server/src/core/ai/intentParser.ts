@@ -4,6 +4,7 @@ import { z } from 'zod';
 import model from '../llmClient';
 import { prisma } from '../../exports/prisma';
 import { AGENT_SYSTEM_PROMPT } from './prompts';
+import { normalizeAmountToMicroAlgos } from '../utils/amount';
 
 type FlowNode = {
   id: string;
@@ -166,8 +167,9 @@ export const parseIntent = async (
 
         const scaledNodes = nodes.map((node) => {
           if (node.type === 'send_payment' && node.config?.amount) {
-            const amount = Number(node.config.amount);
-            node.config.amount = amount < 100000 ? amount * 1000000 : amount;
+            const rawAmount = node.config.amount as unknown;
+            const unitHint = (node.config as any).amountUnit ?? (node.config as any).unit;
+            node.config.amount = normalizeAmountToMicroAlgos(rawAmount, unitHint);
           }
           return node;
         });
