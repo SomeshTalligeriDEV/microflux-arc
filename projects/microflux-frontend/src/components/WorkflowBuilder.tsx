@@ -92,7 +92,6 @@ const MicrofluxNode: React.FC<NodeProps<CanvasNodeData>> = ({ data, selected }) 
       <div className="microflux-node__header" style={{ borderLeftColor: data.color }}>
         <span className="microflux-node__icon">{data.icon}</span>
         <span className="microflux-node__title">{data.label}</span>
-        {!data.isReal && <span className="tag tag-sm tag-mock microflux-node__tag">MOCK</span>}
       </div>
 
       <div className="microflux-node__body">
@@ -1077,16 +1076,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                   >
                     {def.icon}
                   </div>
-                  <div className="node-item-info">
-                    <div className="node-item-name">{def.label}</div>
-                    <div className="node-item-desc">
-                      {def.description}
-                      {!def.isReal && ' (mock)'}
+<div className="node-item-info">
+                      <div className="node-item-name">{def.label}</div>
+                      <div className="node-item-desc">
+                        {def.description}
+                      </div>
                     </div>
-                  </div>
-                  <span className={`tag tag-sm ${def.isReal ? 'tag-real' : 'tag-mock'}`}>
-                    {def.isReal ? 'REAL' : 'MOCK'}
-                  </span>
                 </div>
               ))}
             </div>
@@ -1263,7 +1258,6 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
             <div className="microflux-node__header" style={{ borderLeftColor: paletteDragPreview.def.color }}>
               <span className="microflux-node__icon">{paletteDragPreview.def.icon}</span>
               <span className="microflux-node__title">{paletteDragPreview.def.label}</span>
-              {!paletteDragPreview.def.isReal && <span className="tag tag-sm tag-mock microflux-node__tag">MOCK</span>}
             </div>
             <div className="microflux-node__body">
               <div className="microflux-node__type">{paletteDragPreview.def.type}</div>
