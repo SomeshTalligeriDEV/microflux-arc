@@ -9,7 +9,8 @@ const IntentSchema = z.object({
       id: z.string(),
       type: z.string(),
       position: z.object({ x: z.number(), y: z.number() }),
-      config: z.record(z.string(), z.any()),
+      // Keep config untyped at schema level for Groq compatibility; normalize later.
+      config: z.any(),
     }),
   ),
   edges: z.array(
@@ -32,17 +33,27 @@ export const parseIntent = async (userText: string): Promise<ParsedWorkflow> => 
   });
 
   const normalizedNodes = object.nodes.map((node) => {
-    if (node.type === 'send_payment') {
-      const amount = Number(node.config.amount ?? 0);
+    const rawConfig = (node.config && typeof node.config === 'object') ? node.config as Record<string, unknown> : {};
+
+    const normalizedType = node.type === 'SendPaymentNode' ? 'send_payment' : node.type;
+
+    if (normalizedType === 'send_payment') {
+      const amount = Number(rawConfig.amount ?? 0);
       return {
         ...node,
+        type: 'send_payment',
         config: {
-          ...node.config,
+          ...rawConfig,
           amount: amount < 1000 ? amount * 1000000 : amount,
         },
       };
     }
-    return node;
+
+    return {
+      ...node,
+      type: normalizedType,
+      config: rawConfig,
+    };
   });
 
   return {
