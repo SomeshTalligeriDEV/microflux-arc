@@ -94,9 +94,10 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onNavigate }) => {
   return (
     <section className="hero pixel-bg">
       <div className="hero-content animate-slideUp">
-        <p className="hero-subtitle">
-          Powered by Algorand • Groq AI • CoinGecko
-        </p>
+        <div className="hero-badge animate-slideUp">
+          <span className="hero-badge-icon">✦</span>
+          <span>Powered by Algorand</span>
+        </div>
         <h1 className="hero-title">
           VISUAL<br />
           WORKFLOW<br />
