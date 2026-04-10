@@ -194,6 +194,9 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     setExecutionMode(useSmartContract ? 'atomic' : 'direct');
   }, [useSmartContract]);
 
+  // Derive selectedNode directly for render (instant update)
+  const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
+
   const nodeCounter = useRef(0);
 
   // Load workflow generated inside right-panel AI tab directly into this canvas
@@ -454,8 +457,44 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const deleteNode = useCallback((nodeId: string) => {
     setNodes((prev) => prev.filter((n) => n.id !== nodeId));
     setEdges((prev) => prev.filter((e) => e.source !== nodeId && e.target !== nodeId));
-    if (selectedNodeId === nodeId) setSelectedNodeId(null);
+    if (selectedNodeId === nodeId) {
+      setSelectedNodeId(null);
+      setActiveRightTab('simulate');
+    }
   }, [selectedNodeId]);
+
+  // ── Topological sort for correct execution order ────
+  const getExecutionOrder = useCallback((): CanvasNodeData[] => {
+    const inDegree = new Map<string, number>();
+    const adjList = new Map<string, string[]>();
+    for (const node of nodes) {
+      inDegree.set(node.id, 0);
+      adjList.set(node.id, []);
+    }
+    for (const edge of edges) {
+      adjList.get(edge.source)?.push(edge.target);
+      inDegree.set(edge.target, (inDegree.get(edge.target) ?? 0) + 1);
+    }
+    const queue: string[] = [];
+    for (const [id, deg] of inDegree) {
+      if (deg === 0) queue.push(id);
+    }
+    const ordered: string[] = [];
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      ordered.push(id);
+      for (const next of adjList.get(id) ?? []) {
+        const newDeg = (inDegree.get(next) ?? 1) - 1;
+        inDegree.set(next, newDeg);
+        if (newDeg === 0) queue.push(next);
+      }
+    }
+    // Append any unconnected nodes at the end
+    for (const node of nodes) {
+      if (!ordered.includes(node.id)) ordered.push(node.id);
+    }
+    return ordered.map(id => nodes.find(n => n.id === id)!).filter(Boolean);
+  }, [nodes, edges]);
 
   // Simulate workflow
   const simulateWorkflow = useCallback(async () => {
@@ -463,7 +502,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     setSimResults([]);
 
     const logs: string[] = [];
-    const sortedNodes = [...nodes]; // Simple execution order
+    const sortedNodes = getExecutionOrder();
 
     for (const node of sortedNodes) {
       await new Promise((r) => setTimeout(r, 400));
@@ -536,7 +575,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     logs.push('───── SIMULATION COMPLETE ─────');
     setSimResults([...logs]);
     setIsSimulating(false);
-  }, [nodes]);
+  }, [nodes, getExecutionOrder]);
 
   // ── HYBRID EXECUTION ENGINE ─────────────────
 
@@ -544,7 +583,8 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const executeDirect = useCallback(async (logs: string[]) => {
     if (!activeAddress || !transactionSigner) return;
 
-    for (const node of nodes) {
+    const sortedNodes = getExecutionOrder();
+    for (const node of sortedNodes) {
       await new Promise((r) => setTimeout(r, 300));
 
       if (node.type === 'send_payment' && node.isReal) {
@@ -557,6 +597,13 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           continue;
         }
 
+        // Validate Algorand address
+        try { algosdk.decodeAddress(receiver); } catch {
+          logs.push(`[SKIP] ${node.label}: Invalid Algorand address`);
+          setExecutionLog([...logs]);
+          continue;
+        }
+
         logs.push(`${node.label}: Requesting wallet signature...`);
         setExecutionLog([...logs]);
 
@@ -564,7 +611,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           activeAddress,
           receiver,
           amount,
-          transactionSigner as (txnGroup: unknown[], indexesToSign: number[]) => Promise<Uint8Array[]>,
+          transactionSigner as any,
         );
 
         if (result.success) {
@@ -601,7 +648,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           receiver,
           assetId,
           amount,
-          transactionSigner as (txnGroup: unknown[], indexesToSign: number[]) => Promise<Uint8Array[]>,
+          transactionSigner as any,
         );
 
         if (result.success) {
@@ -631,7 +678,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           appId,
           method,
           args,
-          transactionSigner as (txnGroup: unknown[], indexesToSign: number[]) => Promise<Uint8Array[]>,
+          transactionSigner as any,
         );
 
         if (result.success) {
@@ -684,7 +731,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     const result = await callExecute(
       activeAddress,
       wfHash,
-      transactionSigner as (txnGroup: unknown[], indexesToSign: number[]) => Promise<Uint8Array[]>,
+      transactionSigner as any,
       appId,
     );
 
@@ -752,7 +799,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         asaTransfers: asaTransfers.length > 0 ? asaTransfers : undefined,
         appCall: appId ? { workflowHash: wfHash, appId } : undefined,
       },
-      transactionSigner as (txnGroup: unknown[], indexesToSign: number[]) => Promise<Uint8Array[]>,
+      transactionSigner as any,
     );
 
     if (result.success) {
@@ -901,7 +948,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     try {
       const result = await deployContract(
         activeAddress,
-        transactionSigner as (txnGroup: unknown[], indexesToSign: number[]) => Promise<Uint8Array[]>,
+        transactionSigner as any,
       );
       if (result.success) {
         setDeployedAppId(result.appId);
@@ -916,8 +963,6 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     }
     setIsDeploying(false);
   }, [activeAddress, transactionSigner]);
-
-  const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
   return (
     <div className="workspace-layout">
@@ -995,11 +1040,14 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           onNodesChange={handleNodesChange}
           onEdgesChange={handleEdgesChange}
           onConnect={handleConnect}
-          onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-          onSelectionChange={({ nodes: selectedFlowNodes }) => {
-            setSelectedNodeId(selectedFlowNodes[0]?.id ?? null);
+          onNodeClick={(_, node) => {
+            setSelectedNodeId(node.id);
+            setActiveRightTab('properties');
           }}
-          onPaneClick={() => setSelectedNodeId(null)}
+          onPaneClick={() => {
+            setSelectedNodeId(null);
+            if (activeRightTab === 'properties') setActiveRightTab('simulate');
+          }}
           onInit={(instance) => { flowInstanceRef.current = instance; }}
           defaultViewport={{ x: 0, y: 0, zoom: 1 }}
           connectOnClick={true}
@@ -1189,390 +1237,313 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
               onApiKeyChange={setGroqApiKey}
             />
           </div>
-        ) : selectedNode ? (
-          <div className="panel-body animate-fadeIn">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div>
-                <div className="text-sm font-bold">{selectedNode.label}</div>
-                <div className="text-xs text-muted text-mono">{selectedNode.type}</div>
+        ) : activeRightTab === 'properties' ? (
+          selectedNode ? (
+            <div className="panel-body animate-fadeIn">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div>
+                  <div className="text-sm font-bold">{selectedNode.label}</div>
+                  <div className="text-xs text-muted text-mono">{selectedNode.type}</div>
+                </div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ color: 'var(--color-error)' }}
+                  onClick={() => deleteNode(selectedNode.id)}
+                >
+                  Remove
+                </button>
               </div>
-              <button
-                className="btn btn-ghost btn-sm"
-                style={{ color: 'var(--color-error)' }}
-                onClick={() => deleteNode(selectedNode.id)}
-              >
-                Remove
-              </button>
-            </div>
-
-            <div className="divider" />
-
-            <div style={{ marginBottom: '12px' }}>
-              <span className={`tag tag-${selectedNode.category}`}>
-                {selectedNode.category}
-              </span>
-              <span className={`tag tag-sm ${selectedNode.isReal ? 'tag-real' : 'tag-mock'}`} style={{ marginLeft: '6px' }}>
-                {selectedNode.isReal ? 'ON-CHAIN' : 'SIMULATION'}
-              </span>
-            </div>
-
-            {/* Config Fields */}
-            <div style={{ marginTop: '16px' }}>
-              <div className="text-xs text-uppercase" style={{
-                letterSpacing: '0.08em',
-                fontWeight: 600,
-                color: 'var(--color-text-tertiary)',
-                marginBottom: '8px',
-              }}>
-                Configuration
+              <div className="divider" />
+              <div style={{ marginBottom: '12px' }}>
+                <span className={`tag tag-${selectedNode.category}`}>
+                  {selectedNode.category}
+                </span>
+                <span className={`tag tag-sm ${selectedNode.isReal ? 'tag-real' : 'tag-mock'}`} style={{ marginLeft: '6px' }}>
+                  {selectedNode.isReal ? 'ON-CHAIN' : 'SIMULATION'}
+                </span>
               </div>
-              {Object.entries(selectedNode.config).map(([key, value]) => (
-                <div key={key} style={{ marginBottom: '8px' }}>
-                  <label className="text-xs text-muted" style={{ display: 'block', marginBottom: '3px' }}>
-                    {key}
-                  </label>
-                  <input
-                    className="input"
-                    value={String(value)}
-                    onChange={(e) => {
-                      setNodes((prev) =>
-                        prev.map((n) =>
-                          n.id === selectedNode.id
-                            ? { ...n, config: { ...n.config, [key]: e.target.value } }
-                            : n
-                        )
-                      );
-                    }}
-                  />
+              <div style={{ marginTop: '16px' }}>
+                <div className="text-xs text-uppercase" style={{ letterSpacing: '0.08em', fontWeight: 600, color: 'var(--color-text-tertiary)', marginBottom: '12px' }}>
+                  Configuration
                 </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="panel-body">
-            {/* Simulation Panel */}
-            {/* ── Workflow Stats ─────────────── */}
-            <div style={{ marginBottom: '16px' }}>
-              <div className="text-xs text-uppercase" style={{
-                letterSpacing: '0.08em',
-                fontWeight: 600,
-                color: 'var(--color-text-tertiary)',
-                marginBottom: '12px',
-              }}>
-                Workflow Overview
-              </div>
-              <div className="sim-panel">
-                <div className="sim-row">
-                  <span className="sim-label">Nodes</span>
-                  <span className="sim-value">{nodes.length}</span>
-                </div>
-                <div className="sim-row">
-                  <span className="sim-label">Connections</span>
-                  <span className="sim-value">{edges.length}</span>
-                </div>
-                <div className="sim-row">
-                  <span className="sim-label">On-Chain Txns</span>
-                  <span className="sim-value" style={{ color: 'var(--color-accent)', fontWeight: 700 }}>
-                    {nodes.filter((n) => n.isReal).length}
-                  </span>
-                </div>
-                <div className="sim-row">
-                  <span className="sim-label">Execution Type</span>
-                  <span className="sim-value" style={{ fontWeight: 700, color: 'var(--color-info)' }}>
-                    {useSmartContract ? 'Atomic' : 'Direct'}
-                  </span>
-                </div>
-                {usdQuote && (
-                  <div className="sim-row">
-                    <span className="sim-label">Est. Value</span>
-                    <span className="sim-value sim-usd">{usdQuote}</span>
+                {('receiver' in selectedNode.config) && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                      Receiver Address *
+                    </label>
+                    <input
+                      className="input"
+                      placeholder="Paste Algorand address (58 chars)"
+                      value={String(selectedNode.config.receiver || '')}
+                      onChange={(e) => {
+                        setNodes((prev) =>
+                          prev.map((n) =>
+                            n.id === selectedNode.id
+                              ? { ...n, config: { ...n.config, receiver: e.target.value } }
+                              : n
+                          )
+                        );
+                      }}
+                      style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}
+                    />
+                    {activeAddress && !String(selectedNode.config.receiver || '') && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: '0.6rem', marginTop: '4px', padding: '2px 8px' }}
+                        onClick={() => {
+                          setNodes((prev) =>
+                            prev.map((n) =>
+                              n.id === selectedNode.id
+                                ? { ...n, config: { ...n.config, receiver: activeAddress } }
+                                : n
+                            )
+                          );
+                        }}
+                      >
+                        Use my address
+                      </button>
+                    )}
                   </div>
                 )}
+                {('amount' in selectedNode.config) && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                      {selectedNode.type === 'send_payment' ? 'Amount (microAlgos) *' : 'Amount *'}
+                    </label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="0"
+                      placeholder={selectedNode.type === 'send_payment' ? '1000000 = 1 ALGO' : '0'}
+                      value={String(selectedNode.config.amount || '')}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? 0 : Number(e.target.value);
+                        setNodes((prev) =>
+                          prev.map((n) =>
+                            n.id === selectedNode.id
+                              ? { ...n, config: { ...n.config, amount: val } }
+                              : n
+                          )
+                        );
+                      }}
+                    />
+                    {selectedNode.type === 'send_payment' && Number(selectedNode.config.amount) > 0 && (
+                      <span className="text-xs text-muted" style={{ fontSize: '0.6rem' }}>
+                        = {(Number(selectedNode.config.amount) / 1_000_000).toFixed(6)} ALGO
+                      </span>
+                    )}
+                  </div>
+                )}
+                {('asset_id' in selectedNode.config) && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                      Asset ID (ASA) *
+                    </label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 10458941"
+                      value={String(selectedNode.config.asset_id || '')}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? 0 : Number(e.target.value);
+                        setNodes((prev) =>
+                          prev.map((n) =>
+                            n.id === selectedNode.id
+                              ? { ...n, config: { ...n.config, asset_id: val } }
+                              : n
+                          )
+                        );
+                      }}
+                    />
+                  </div>
+                )}
+                {('app_id' in selectedNode.config) && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                      Application ID *
+                    </label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 758592157"
+                      value={String(selectedNode.config.app_id || '')}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? 0 : Number(e.target.value);
+                        setNodes((prev) =>
+                          prev.map((n) =>
+                            n.id === selectedNode.id
+                              ? { ...n, config: { ...n.config, app_id: val } }
+                              : n
+                          )
+                        );
+                      }}
+                    />
+                  </div>
+                )}
+                {Object.entries(selectedNode.config)
+                  .filter(([key]) => !['receiver', 'amount', 'asset_id', 'app_id', 'method', 'args'].includes(key))
+                  .map(([key, value]) => (
+                    <div key={key} style={{ marginBottom: '10px' }}>
+                      <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                        {key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                      </label>
+                      {typeof value === 'number' ? (
+                        <input
+                          className="input"
+                          type="number"
+                          value={String(value)}
+                          onChange={(e) => {
+                            setNodes((prev) =>
+                              prev.map((n) =>
+                                n.id === selectedNode.id
+                                  ? { ...n, config: { ...n.config, [key]: Number(e.target.value) || 0 } }
+                                  : n
+                              )
+                            );
+                          }}
+                        />
+                      ) : (
+                        <input
+                          className="input"
+                          value={String(value)}
+                          onChange={(e) => {
+                            setNodes((prev) =>
+                              prev.map((n) =>
+                                n.id === selectedNode.id
+                                  ? { ...n, config: { ...n.config, [key]: e.target.value } }
+                                  : n
+                              )
+                            );
+                          }}
+                        />
+                      )}
+                    </div>
+                  ))}
+              </div>
+              <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--color-border)' }}>
+                <div className="text-xs text-uppercase" style={{ letterSpacing: '0.08em', fontWeight: 600, color: 'var(--color-text-tertiary)', marginBottom: '8px' }}>
+                  Connections
+                </div>
+                <div className="text-xs text-muted" style={{ lineHeight: 1.6 }}>
+                  {edges.filter(e => e.source === selectedNode.id).length > 0 ? (
+                    <div>→ Outputs to: {edges.filter(e => e.source === selectedNode.id).map(e => {
+                      const target = nodes.find(n => n.id === e.target);
+                      return target?.label || e.target;
+                    }).join(', ')}</div>
+                  ) : <div>→ No outgoing connections</div>}
+                  {edges.filter(e => e.target === selectedNode.id).length > 0 ? (
+                    <div>← Inputs from: {edges.filter(e => e.target === selectedNode.id).map(e => {
+                      const source = nodes.find(n => n.id === e.source);
+                      return source?.label || e.source;
+                    }).join(', ')}</div>
+                  ) : <div>← No incoming connections</div>}
+                </div>
               </div>
             </div>
-
-            {/* ── Load Demo Workflow ──────────── */}
+          ) : (
+            <div className="panel-body">
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '50vh', color: 'var(--color-text-tertiary)', textAlign: 'center', padding: '24px' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '16px', opacity: 0.5 }}>◈</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>No Node Selected</div>
+                <div style={{ fontSize: '0.75rem', opacity: 0.7, maxWidth: '200px' }}>Click a node on the canvas to view and edit its properties</div>
+              </div>
+            </div>
+          )
+        ) : (
+          <div className="panel-body">
+            <div style={{ marginBottom: '16px' }}>
+              <div className="text-xs text-uppercase" style={{ letterSpacing: '0.08em', fontWeight: 600, color: 'var(--color-text-tertiary)', marginBottom: '12px' }}>Workflow Overview</div>
+              <div className="sim-panel">
+                <div className="sim-row"><span className="sim-label">Nodes</span><span className="sim-value">{nodes.length}</span></div>
+                <div className="sim-row"><span className="sim-label">Connections</span><span className="sim-value">{edges.length}</span></div>
+                <div className="sim-row"><span className="sim-label">On-Chain Txns</span><span className="sim-value" style={{ color: 'var(--color-accent)', fontWeight: 700 }}>{nodes.filter((n) => n.isReal).length}</span></div>
+                <div className="sim-row"><span className="sim-label">Execution Type</span><span className="sim-value" style={{ fontWeight: 700, color: 'var(--color-info)' }}>{useSmartContract ? 'Atomic' : 'Direct'}</span></div>
+                {usdQuote && <div className="sim-row"><span className="sim-label">Est. Value</span><span className="sim-value sim-usd">{usdQuote}</span></div>}
+              </div>
+            </div>
             {nodes.length === 0 && (
-              <button
-                className="btn w-full"
-                onClick={loadDemoWorkflow}
-                style={{
-                  background: 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(59,130,246,0.15))',
-                  border: '1px solid rgba(139,92,246,0.3)',
-                  color: 'var(--color-text-primary)',
-                  marginBottom: '12px',
-                }}
-              >
+              <button className="btn w-full" onClick={loadDemoWorkflow} style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(59,130,246,0.15))', border: '1px solid rgba(139,92,246,0.3)', color: 'var(--color-text-primary)', marginBottom: '12px' }}>
                 LOAD DEMO WORKFLOW
               </button>
             )}
-
-            {/* ── Simulate ───────────────────── */}
-            <button
-              className="btn btn-outline w-full"
-              onClick={simulateWorkflow}
-              disabled={nodes.length === 0 || isSimulating}
-              style={{ marginBottom: '8px', fontSize: '0.7rem' }}
-            >
+            <button className="btn btn-outline w-full" onClick={simulateWorkflow} disabled={nodes.length === 0 || isSimulating} style={{ marginBottom: '8px', fontSize: '0.7rem' }}>
               {isSimulating ? 'SIMULATING...' : 'SIMULATE'}
             </button>
-
-            {/* ── Smart Contract Toggle ───────── */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 12px',
-              background: 'var(--color-bg-input)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-md)',
-              marginBottom: '10px',
-              cursor: 'pointer',
-            }}
-              onClick={() => setUseSmartContract(!useSmartContract)}
-            >
-              <div style={{
-                width: '32px',
-                height: '18px',
-                borderRadius: '9px',
-                background: useSmartContract ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
-                position: 'relative',
-                transition: 'background 0.2s',
-                flexShrink: 0,
-                border: `1px solid ${useSmartContract ? 'var(--color-accent)' : 'var(--color-border)'}`,
-              }}>
-                <div style={{
-                  width: '14px',
-                  height: '14px',
-                  borderRadius: '50%',
-                  background: 'white',
-                  position: 'absolute',
-                  top: '1px',
-                  left: useSmartContract ? '16px' : '1px',
-                  transition: 'left 0.2s',
-                }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', marginBottom: '10px', cursor: 'pointer' }} onClick={() => setUseSmartContract(!useSmartContract)}>
+              <div style={{ width: '32px', height: '18px', borderRadius: '9px', background: useSmartContract ? 'var(--color-accent)' : 'var(--color-bg-tertiary)', position: 'relative', transition: 'background 0.2s', flexShrink: 0, border: `1px solid ${useSmartContract ? 'var(--color-accent)' : 'var(--color-border)'}` }}>
+                <div style={{ width: '14px', height: '14px', borderRadius: '50%', background: 'white', position: 'absolute', top: '1px', left: useSmartContract ? '16px' : '1px', transition: 'left 0.2s' }} />
               </div>
               <div>
-                <div className="text-xs" style={{ fontWeight: 600 }}>
-                  Use Smart Contract
-                </div>
-                <div className="text-xs text-muted" style={{ fontSize: '0.6rem' }}>
-                  {useSmartContract ? 'Atomic group + App call (verifiable)' : 'Direct L1 transactions'}
-                </div>
+                <div className="text-xs" style={{ fontWeight: 600 }}>Use Smart Contract</div>
+                <div className="text-xs text-muted" style={{ fontSize: '0.6rem' }}>{useSmartContract ? 'Atomic group + App call (verifiable)' : 'Direct L1 transactions'}</div>
               </div>
             </div>
-
-            {/* ── Contract State (Trust Signal) ── */}
             <div className="sim-panel" style={{ marginBottom: '12px' }}>
-              <div className="text-xs text-uppercase" style={{
-                letterSpacing: '0.08em',
-                fontWeight: 600,
-                color: 'var(--color-accent)',
-                marginBottom: '8px',
-                paddingBottom: '6px',
-                borderBottom: '1px solid var(--color-border)',
-              }}>
-                On-Chain Contract
-              </div>
+              <div className="text-xs text-uppercase" style={{ letterSpacing: '0.08em', fontWeight: 600, color: 'var(--color-accent)', marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px solid var(--color-border)' }}>On-Chain Contract</div>
               <div className="sim-row">
                 <span className="sim-label">App ID</span>
                 <span className="sim-value">
                   {(getAppId() > 0 || deployedAppId > 0) ? (
-                    <a
-                      href={getAppExplorerUrl(deployedAppId || getAppId(), networkName)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: 'var(--color-accent)', fontWeight: 700 }}
-                    >
-                      {deployedAppId || getAppId()}
-                    </a>
+                    <a href={getAppExplorerUrl(deployedAppId || getAppId(), networkName)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', fontWeight: 700 }}>{deployedAppId || getAppId()}</a>
                   ) : (
                     <span style={{ color: 'var(--color-text-tertiary)' }}>Not deployed</span>
                   )}
                 </span>
               </div>
               {getAppId() === 0 && deployedAppId === 0 && activeAddress && (
-                <button
-                  className="btn btn-outline btn-sm w-full"
-                  onClick={deployContractHandler}
-                  disabled={isDeploying}
-                  style={{ marginTop: '6px', marginBottom: '6px', fontSize: '0.65rem' }}
-                >
+                <button className="btn btn-outline btn-sm w-full" onClick={deployContractHandler} disabled={isDeploying} style={{ marginTop: '6px', marginBottom: '6px', fontSize: '0.65rem' }}>
                   {isDeploying ? 'DEPLOYING...' : 'DEPLOY CONTRACT'}
                 </button>
               )}
-              <div className="sim-row">
-                <span className="sim-label">Total Executions</span>
-                <span className="sim-value" style={{ fontWeight: 700, color: 'var(--color-success)' }}>
-                  {contractState?.totalExecutions ?? '—'}
-                </span>
-              </div>
-              <div className="sim-row">
-                <span className="sim-label">Workflows Registered</span>
-                <span className="sim-value">{contractState?.workflowCount ?? '—'}</span>
-              </div>
+              <div className="sim-row"><span className="sim-label">Total Executions</span><span className="sim-value" style={{ fontWeight: 700, color: 'var(--color-success)' }}>{contractState?.totalExecutions ?? '—'}</span></div>
+              <div className="sim-row"><span className="sim-label">Workflows Registered</span><span className="sim-value">{contractState?.workflowCount ?? '—'}</span></div>
               <div className="sim-row">
                 <span className="sim-label">Status</span>
                 <span className="sim-value">
                   {executionSuccess ? (
-                    <span style={{ color: 'var(--color-success)', fontWeight: 700 }}>
-                      <span className="status-dot status-dot-success" style={{ marginRight: '4px' }}></span>
-                      Last: Success
-                    </span>
+                    <span style={{ color: 'var(--color-success)', fontWeight: 700 }}><span className="status-dot status-dot-success" style={{ marginRight: '4px' }}></span>Last: Success</span>
                   ) : (
                     <span className="text-muted">Ready</span>
                   )}
                 </span>
               </div>
               <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--color-border)' }}>
-                <span className="text-xs text-muted" style={{ fontSize: '0.6rem', lineHeight: '1.4' }}>
-                  All executions are real Algorand Testnet transactions.
-                  No data is mocked.
-                </span>
+                <span className="text-xs text-muted" style={{ fontSize: '0.6rem', lineHeight: '1.4' }}>All executions are real Algorand Testnet transactions. No data is mocked.</span>
               </div>
             </div>
-
-            {/* ── PRIMARY EXECUTE BUTTON ────── */}
-            <button
-              className="btn btn-primary w-full"
-              disabled={nodes.length === 0 || !activeAddress || isExecuting}
-              onClick={executeWorkflow}
-              style={{
-                padding: '14px',
-                fontSize: '0.8rem',
-                fontWeight: 800,
-                letterSpacing: '0.06em',
-                position: 'relative',
-                overflow: 'hidden',
-              }}
-            >
-              {isExecuting ? (
-                <>
-                  <span className="loading-spinner"></span>
-                  EXECUTING...
-                </>
-              ) : (
-                'EXECUTE WORKFLOW'
-              )}
+            <button className="btn btn-primary w-full" disabled={nodes.length === 0 || !activeAddress || isExecuting} onClick={executeWorkflow} style={{ padding: '14px', fontSize: '0.8rem', fontWeight: 800, letterSpacing: '0.06em', position: 'relative', overflow: 'hidden' }}>
+              {isExecuting ? (<><span className="loading-spinner"></span>EXECUTING...</>) : 'EXECUTE WORKFLOW'}
             </button>
-
-            {!activeAddress && (
-              <p className="text-xs text-muted" style={{ marginTop: '6px', textAlign: 'center' }}>
-                Connect wallet to execute
-              </p>
-            )}
-            {activeAddress && !isExecuting && (
-              <p className="text-xs" style={{ marginTop: '6px', textAlign: 'center', color: 'var(--color-success)' }}>
-                <span className="status-dot status-dot-success" style={{ marginRight: '4px' }}></span>
-                Wallet connected • {networkName}
-              </p>
-            )}
-
-            {/* ── SUCCESS BANNER ──────────────── */}
+            {!activeAddress && <p className="text-xs text-muted" style={{ marginTop: '6px', textAlign: 'center' }}>Connect wallet to execute</p>}
+            {activeAddress && !isExecuting && <p className="text-xs" style={{ marginTop: '6px', textAlign: 'center', color: 'var(--color-success)' }}><span className="status-dot status-dot-success" style={{ marginRight: '4px' }}></span>Wallet connected • {networkName}</p>}
             {executionSuccess && !isExecuting && (
-              <div style={{
-                marginTop: '12px',
-                padding: '14px',
-                background: 'rgba(34, 197, 94, 0.08)',
-                border: '1px solid rgba(34, 197, 94, 0.25)',
-                borderRadius: 'var(--radius-md)',
-                textAlign: 'center',
-              }}>
+              <div style={{ marginTop: '12px', padding: '14px', background: 'rgba(34, 197, 94, 0.08)', border: '1px solid rgba(34, 197, 94, 0.25)', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
                 <div style={{ fontSize: '0.9rem', marginBottom: '6px', color: 'var(--color-success)', fontWeight: 700 }}>CONFIRMED</div>
-                <div className="text-sm" style={{ fontWeight: 700, color: 'var(--color-success)', marginBottom: '4px' }}>
-                  EXECUTION CONFIRMED
-                </div>
-                <div className="text-xs text-muted" style={{ marginBottom: '8px' }}>
-                  Verified on Algorand Testnet
-                </div>
+                <div className="text-sm" style={{ fontWeight: 700, color: 'var(--color-success)', marginBottom: '4px' }}>EXECUTION CONFIRMED</div>
+                <div className="text-xs text-muted" style={{ marginBottom: '8px' }}>Verified on Algorand Testnet</div>
                 {lastTxId && (
-                  <a
-                    href={getExplorerTxUrl(lastTxId, networkName)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-sm"
-                    style={{
-                      background: 'var(--color-success)',
-                      color: 'white',
-                      border: 'none',
-                      fontSize: '0.65rem',
-                      marginBottom: '8px',
-                      display: 'inline-block',
-                    }}
-                  >
-                    VIEW ON EXPLORER
-                  </a>
+                  <a href={getExplorerTxUrl(lastTxId, networkName)} target="_blank" rel="noopener noreferrer" className="btn btn-sm" style={{ background: 'var(--color-success)', color: 'white', border: 'none', fontSize: '0.65rem', marginBottom: '8px', display: 'inline-block' }}>VIEW ON EXPLORER</a>
                 )}
                 <div style={{ marginTop: '8px' }}>
-                  <button
-                    className="btn btn-outline btn-sm"
-                    onClick={executeWorkflow}
-                    style={{ fontSize: '0.65rem' }}
-                  >
-                    REPLAY WORKFLOW
-                  </button>
+                  <button className="btn btn-outline btn-sm" onClick={executeWorkflow} style={{ fontSize: '0.65rem' }}>REPLAY WORKFLOW</button>
                 </div>
               </div>
             )}
-
-            {/* ── Execution Log ───────────────── */}
             {executionLog.length > 0 && (
               <div style={{ marginTop: '16px' }}>
-                <div className="text-xs text-uppercase" style={{
-                  letterSpacing: '0.08em',
-                  fontWeight: 600,
-                  color: 'var(--color-accent)',
-                  marginBottom: '8px',
-                }}>
-                  Execution Log
-                </div>
-                <div style={{
-                  background: 'var(--color-bg-input)',
-                  border: `1px solid ${executionSuccess ? 'rgba(34,197,94,0.3)' : 'var(--color-border-accent)'}`,
-                  borderRadius: 'var(--radius-md)',
-                  padding: '12px',
-                  maxHeight: '300px',
-                  overflowY: 'auto',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.7rem',
-                  lineHeight: '1.8',
-                }}>
-                  {executionLog.map((line, i) => (
-                    <div key={i} className="animate-slideUp" style={{ animationDelay: `${i * 30}ms` }}>
-                      {line}
-                    </div>
-                  ))}
+                <div className="text-xs text-uppercase" style={{ letterSpacing: '0.08em', fontWeight: 600, color: 'var(--color-accent)', marginBottom: '8px' }}>Execution Log</div>
+                <div style={{ background: 'var(--color-bg-input)', border: `1px solid ${executionSuccess ? 'rgba(34,197,94,0.3)' : 'var(--color-border-accent)'}`, borderRadius: 'var(--radius-md)', padding: '12px', maxHeight: '300px', overflowY: 'auto', fontFamily: 'var(--font-mono)', fontSize: '0.7rem', lineHeight: '1.8' }}>
+                  {executionLog.map((line, i) => (<div key={i} className="animate-slideUp" style={{ animationDelay: `${i * 30}ms` }}>{line}</div>))}
                 </div>
               </div>
             )}
-
-            {/* ── Simulation Results ──────────── */}
             {simResults.length > 0 && (
               <div style={{ marginTop: '16px' }}>
-                <div className="text-xs text-uppercase" style={{
-                  letterSpacing: '0.08em',
-                  fontWeight: 600,
-                  color: 'var(--color-text-tertiary)',
-                  marginBottom: '8px',
-                }}>
-                  Simulation Log
-                </div>
-                <div style={{
-                  background: 'var(--color-bg-input)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '12px',
-                  maxHeight: '200px',
-                  overflowY: 'auto',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.7rem',
-                  lineHeight: '1.8',
-                }}>
-                  {simResults.map((line, i) => (
-                    <div key={i} className="animate-slideUp" style={{ animationDelay: `${i * 50}ms` }}>
-                      {line}
-                    </div>
-                  ))}
+                <div className="text-xs text-uppercase" style={{ letterSpacing: '0.08em', fontWeight: 600, color: 'var(--color-text-tertiary)', marginBottom: '8px' }}>Simulation Log</div>
+                <div style={{ background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '12px', maxHeight: '200px', overflowY: 'auto', fontFamily: 'var(--font-mono)', fontSize: '0.7rem', lineHeight: '1.8' }}>
+                  {simResults.map((line, i) => (<div key={i} className="animate-slideUp" style={{ animationDelay: `${i * 50}ms` }}>{line}</div>))}
                 </div>
               </div>
             )}
