@@ -1249,3 +1249,224 @@ textarea.input {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ── React Flow Canvas ─────────────────────── */
+.canvas-container-reactflow {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(37, 99, 235, 0.12), transparent 30%),
+    radial-gradient(circle at 80% 15%, rgba(16, 185, 129, 0.08), transparent 26%),
+    linear-gradient(180deg, rgba(6, 8, 12, 0.98) 0%, rgba(9, 11, 16, 1) 100%);
+}
+
+.microflux-reactflow {
+  background: transparent;
+}
+
+.microflux-reactflow .react-flow__renderer {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.03), transparent 40%),
+    linear-gradient(180deg, rgba(10, 12, 18, 0.75), rgba(6, 8, 12, 0.96));
+}
+
+.microflux-reactflow .react-flow__pane {
+  cursor: grab;
+}
+
+.microflux-reactflow .react-flow__pane:active {
+  cursor: grabbing;
+}
+
+.microflux-reactflow .react-flow__background {
+  opacity: 0.7;
+}
+
+.microflux-reactflow .react-flow__controls {
+  background: rgba(10, 12, 18, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow-md);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.microflux-reactflow .react-flow__controls-button {
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--color-text-primary);
+  fill: var(--color-text-primary);
+}
+
+.microflux-reactflow .react-flow__controls-button:hover {
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.microflux-reactflow .react-flow__minimap {
+  background: rgba(10, 12, 18, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow-md);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.microflux-reactflow .react-flow__edge-path {
+  stroke-linecap: round;
+}
+
+.microflux-reactflow .react-flow__edge.animated path {
+  stroke-dasharray: 6 6;
+  animation: microflux-flow-dash 1.2s linear infinite;
+}
+
+@keyframes microflux-flow-dash {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+.microflux-reactflow .react-flow__handle {
+  width: 10px;
+  height: 10px;
+  background: var(--color-accent);
+  border: 2px solid rgba(10, 12, 18, 0.95);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
+.microflux-reactflow .react-flow__handle-target {
+  left: -6px;
+}
+
+.microflux-reactflow .react-flow__handle-source {
+  right: -6px;
+}
+
+.microflux-node {
+  position: relative;
+  width: 238px;
+  min-height: 92px;
+  padding: 12px 12px 10px;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(18, 21, 28, 0.96), rgba(11, 14, 19, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(10px);
+  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.microflux-node:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 18px 38px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(37, 99, 235, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.microflux-node.is-selected {
+  border-color: rgba(56, 189, 248, 0.42);
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.48),
+    0 0 0 1px rgba(56, 189, 248, 0.18),
+    0 0 26px rgba(56, 189, 248, 0.16);
+}
+
+.microflux-node::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 40%, rgba(255, 255, 255, 0.03));
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.microflux-node__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-left: 10px;
+  border-left: 3px solid var(--color-accent);
+}
+
+.microflux-node__icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.microflux-node__title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-text-primary);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.microflux-node__tag {
+  padding: 1px 5px !important;
+  font-size: 0.53rem !important;
+}
+
+.microflux-node__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 10px;
+}
+
+.microflux-node__type {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.microflux-node__meta {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+}
+
+.microflux-node-trigger {
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.38),
+    0 0 0 1px rgba(139, 92, 246, 0.10);
+}
+
+.microflux-node-action {
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.38),
+    0 0 0 1px rgba(59, 130, 246, 0.08);
+}
+
+.microflux-node-logic {
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.38),
+    0 0 0 1px rgba(245, 158, 11, 0.08);
+}
+
+.microflux-node-defi {
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.38),
+    0 0 0 1px rgba(16, 185, 129, 0.08);
+}
+
+.microflux-node-notification {
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.38),
+    0 0 0 1px rgba(236, 72, 153, 0.08);
+}
+
+.microflux-flow-empty {
+  pointer-events: none;
+}
