@@ -77,11 +77,16 @@ const TelegramLinkModal: React.FC<TelegramLinkModalProps> = ({
       onClick={handleClose}
     >
       <div className="modal-box" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h3 className="text-xl font-bold" style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <h3 className="text-xl font-bold" style={{ 
+            textTransform: 'uppercase', 
+            letterSpacing: '0.04em',
+            color: 'var(--color-text-primary)', /* Explicitly white */
+            margin: 0
+          }}>
             Telegram Handshake
           </h3>
-          <button className="btn btn-ghost btn-sm" onClick={handleClose}>✕</button>
+          <button className="btn btn-ghost btn-sm" onClick={handleClose} style={{ color: 'var(--color-text-secondary)' }}>✕</button>
         </div>
 
         {error && (
@@ -100,7 +105,12 @@ const TelegramLinkModal: React.FC<TelegramLinkModalProps> = ({
 
         {step === 1 ? (
           <div>
-            <p className="text-xs text-muted" style={{ marginBottom: '16px', lineHeight: '1.6' }}>
+            <p style={{ 
+              marginBottom: '20px', 
+              lineHeight: '1.6', 
+              fontSize: 'var(--text-sm)',
+              color: 'var(--color-text-secondary)' 
+            }}>
               Link your Telegram account to enable notifications and manage your workflows through the MicroFlux bot.
             </p>
             
@@ -130,35 +140,54 @@ const TelegramLinkModal: React.FC<TelegramLinkModalProps> = ({
               </div>
             </div>
 
-            <div className="text-xs" style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
+            <div className="text-xs" style={{ 
+              fontWeight: 700, 
+              textTransform: 'uppercase', 
+              letterSpacing: '0.06em', 
+              marginBottom: '8px',
+              color: 'var(--color-accent-hover)'
+            }}>
               Step 1
             </div>
-            <div className="text-sm text-muted" style={{ marginBottom: '14px' }}>
+            <div style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-sm)', marginBottom: '16px' }}>
               Open Telegram and start a chat with the MicroFlux bot.
             </div>
 
-            <div className="text-xs" style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
+            <div className="text-xs" style={{ 
+              fontWeight: 700, 
+              textTransform: 'uppercase', 
+              letterSpacing: '0.06em', 
+              marginBottom: '8px',
+              color: 'var(--color-accent-hover)'
+            }}>
               Step 2
             </div>
-            <div className="text-sm text-muted" style={{ marginBottom: '8px' }}>
+            <div style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-sm)', marginBottom: '12px' }}>
               Send this exact command to the bot:
             </div>
 
             <div style={{
-              padding: '12px 14px',
+              padding: '14px 16px',
               borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border)',
-              background: 'var(--color-bg-input)',
+              border: '1px solid var(--color-border-hover)',
+              background: 'var(--color-bg-primary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: '12px',
-              marginBottom: '10px',
+              marginBottom: '12px',
+              boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.2)'
             }}>
-              <code style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', wordBreak: 'break-all' }}>
+              <code style={{ 
+                fontFamily: 'var(--font-mono)', 
+                fontSize: 'var(--text-sm)', 
+                wordBreak: 'break-all',
+                color: 'var(--color-success)',
+                fontWeight: 600
+              }}>
                 {command}
               </code>
-              <button className="btn btn-outline btn-sm" onClick={handleCopy}>
+              <button className="btn btn-accent btn-sm" onClick={handleCopy}>
                 {copyState === 'copied' ? 'COPIED!' : 'COPY'}
               </button>
             </div>
@@ -170,15 +199,15 @@ const TelegramLinkModal: React.FC<TelegramLinkModalProps> = ({
             )}
 
             <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-              <button className="btn" onClick={handleDone} style={{ flex: 1, justifyContent: 'center' }}>
-                DONE
+               <button className="btn btn-primary" onClick={handleDone} style={{ flex: 1, justifyContent: 'center' }}>
+                DONE, I'VE SENT IT
               </button>
             </div>
           </div>
         )}
 
-        <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
-          <button className="btn btn-outline btn-sm" onClick={handleClose}>
+        <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--color-border)', paddingTop: '16px' }}>
+          <button className="btn btn-ghost btn-sm" onClick={handleClose} style={{ color: 'var(--color-text-tertiary)' }}>
             CLOSE
           </button>
         </div>

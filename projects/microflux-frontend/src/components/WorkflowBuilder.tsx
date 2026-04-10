@@ -699,9 +699,9 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
 
         if (result.success) {
           sharedContext.status = 'success';
-          sharedContext.amount = amount;
-          sharedContext.txId = result.txId;
           const algoAmt = Number(microAlgosToAlgo(amount));
+          sharedContext.amount = algoAmt;
+          sharedContext.txId = result.txId;
           try {
             const quote = await algoToUsd(algoAmt);
             logs.push(`[OK] ${node.label}: Sent ${algoAmt} ALGO (~${quote.formatted})`);
@@ -713,7 +713,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         } else {
           sharedContext.status = 'failed';
           sharedContext.txId = '';
-          sharedContext.amount = amount;
+          sharedContext.amount = Number(microAlgosToAlgo(amount));
           logs.push(`[FAIL] ${node.label}: ${result.error}`);
         }
         setExecutionLog([...logs]);
