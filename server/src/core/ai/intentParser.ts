@@ -4,6 +4,7 @@ import { z } from 'zod';
 import model from '../llmClient';
 import { prisma } from '../../exports/prisma';
 import { AGENT_SYSTEM_PROMPT } from './prompts';
+import { normalizeAmountToMicroAlgos } from '../utils/amount';
 
 type FlowNode = {
   id: string;
@@ -166,8 +167,9 @@ export const parseIntent = async (
 
         const scaledNodes = nodes.map((node) => {
           if (node.type === 'send_payment' && node.config?.amount) {
-            const amount = Number(node.config.amount);
-            node.config.amount = amount < 100000 ? amount * 1000000 : amount;
+            const rawAmount = node.config.amount as unknown;
+            const unitHint = (node.config as any).amountUnit ?? (node.config as any).unit;
+            node.config.amount = normalizeAmountToMicroAlgos(rawAmount, unitHint);
           }
           return node;
         });
@@ -218,10 +220,29 @@ export const parseIntent = async (
       reason: 'Model completed without triggering a final tool action',
     };
   } catch (error) {
-    console.error("AI Parser Error:", error);
+    const err = error as {
+      name?: string;
+      message?: string;
+      cause?: unknown;
+      statusCode?: number;
+    };
+
+    const errorMessage = String(err?.message ?? 'Unknown AI parser error');
+    const isToolJsonParseError = /Failed to parse tool call arguments as JSON|tool call arguments|Unexpected token/i.test(errorMessage);
+    const isApiCallError = err?.name === 'APICallError' || typeof err?.statusCode === 'number';
+
+    console.error('[AI Parser Error]', {
+      name: err?.name,
+      statusCode: err?.statusCode,
+      message: errorMessage,
+      isToolJsonParseError,
+      isApiCallError,
+      cause: err?.cause,
+    });
+
     return {
       action: 'none',
-      reason: 'Internal AI processing error',
+      reason: 'The AI encountered an error generating this complex workflow. Try breaking your request into smaller steps.',
     };
   }
 };

@@ -78,8 +78,8 @@ const pollTelegram = async () => {
 
       if (!data.ok) {
         if (data.error_code === 409) {
-          if (debug && !conflictSuppressed) {
-            console.log('[POLL DEBUG] Suppressing Telegram 409 conflict noise (another getUpdates consumer is active).');
+          if (!conflictSuppressed) {
+            console.warn('[POLL WARN] Telegram 409 conflict: another getUpdates consumer is active for this bot token.');
           }
           conflictSuppressed = true;
           await new Promise(resolve => setTimeout(resolve, 1500));
@@ -97,6 +97,7 @@ const pollTelegram = async () => {
       conflictSuppressed = false;
 
       if (data.result.length > 0) {
+        console.log(`[POLL] Received ${data.result.length} Telegram update(s)`);
         if (debug) {
           console.log('[POLL DEBUG] updates received', {
             count: data.result.length,
@@ -106,6 +107,15 @@ const pollTelegram = async () => {
         }
 
         for (const update of data.result) {
+          const hasText = Boolean(update.message?.text);
+          const hasVoice = Boolean(update.message?.voice?.file_id);
+          console.log('[POLL] Dispatching update', {
+            updateId: update.update_id,
+            chatId: update.message?.chat?.id,
+            hasText,
+            hasVoice,
+          });
+
           if (debug) {
             console.log('[POLL DEBUG] dispatching update', {
               updateId: update.update_id,

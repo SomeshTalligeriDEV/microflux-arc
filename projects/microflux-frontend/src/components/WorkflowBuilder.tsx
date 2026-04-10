@@ -31,6 +31,7 @@ import {
 } from '../services/nodeDefinitions';
 import { algoToUsd } from '../services/marketService';
 import { sendPayment, sendAsaTransfer, getExplorerTxUrl, fetchAccountBalance } from '../services/walletService';
+import { microAlgosToAlgo, normalizeAmountToMicroAlgos } from '../utils/amount';
 import {
   callExecute,
   hashWorkflow,
@@ -666,7 +667,10 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       await new Promise((r) => setTimeout(r, 300));
 
       if (node.type === 'send_payment' && node.isReal) {
-        const amount = Number(node.config.amount) || 0;
+        const amount = normalizeAmountToMicroAlgos(
+          node.config.amount,
+          (node.config as any).amountUnit ?? (node.config as any).unit,
+        );
         const receiver = String(node.config.receiver || '');
 
         if (!receiver || receiver === 'ALGO_ADDRESS_PLACEHOLDER') {
@@ -693,11 +697,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         );
 
         if (result.success) {
-          sharedContext.status = 'success';
-          sharedContext.amount = amount / 1_000_000;
-          sharedContext.txId = result.txId;
-
-          const algoAmt = amount / 1_000_000;
+          const algoAmt = Number(microAlgosToAlgo(amount));
           try {
             const quote = await algoToUsd(algoAmt);
             logs.push(`[OK] ${node.label}: Sent ${algoAmt} ALGO (~${quote.formatted})`);
@@ -907,7 +907,10 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     for (const node of nodes) {
       if (node.type === 'send_payment' && node.isReal) {
         const receiver = String(node.config.receiver || '');
-        const amount = Number(node.config.amount) || 0;
+        const amount = normalizeAmountToMicroAlgos(
+          node.config.amount,
+          (node.config as any).amountUnit ?? (node.config as any).unit,
+        );
         if (receiver && receiver !== 'ALGO_ADDRESS_PLACEHOLDER' && amount > 0) {
           payments.push({ receiver, amountMicroAlgos: amount });
         }

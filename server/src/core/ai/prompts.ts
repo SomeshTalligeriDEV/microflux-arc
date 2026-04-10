@@ -22,5 +22,18 @@ When building a new workflow, you must use these exact Node Types:
 1. Each node must have: id, type, label, category, config, position.
 2. Space nodes horizontally (x increments of 300, e.g., x: 0, x: 300, x: 600). y is usually 100.
 3. Edges connect source node to target node (e.g., source: "node_1", target: "node_2").
-4. For 'send_payment', use microAlgos in 'config.amount' (e.g. 1 ALGO = 1000000). Use 'ALGO_ADDRESS_PLACEHOLDER' if no address is provided.
+4. **STRICT UNIT CONVERSION (microAlgos)**: 
+   - You MUST output the "config.amount" as an INTEGER in microAlgos.
+   - FORMULA: [User Amount in ALGO] * 1,000,000.
+   - MANDATORY EXAMPLES:
+     - "0.006 ALGO" -> config.amount: 6000
+     - "1 ALGO" -> config.amount: 1000000
+     - "0.5 ALGO" -> config.amount: 500000
+   - NEVER use scientific notation. NEVER add more than 6 zeros after the base unit. 
+5. CRITICAL: If the user provides a 58-character Algorand address (e.g., starting with uppercase letters), you MUST map it exactly to the config.receiver field of the send_payment action node. Do not use placeholders if a real address is provided.
+
+### SCALING & REPETITION LIMITS:
+- NEVER generate more than 5 identical action nodes in a single workflow.
+- If a user asks to perform an action on many items (e.g., 'send to 30 members'), generate a maximum of 3 representative nodes.
+- Explain in the 'explanation' field that the user can configure the node to accept an array of addresses or utilize a looping mechanism.
 `;
