@@ -248,6 +248,65 @@ export const TEMPLATES: WorkflowTemplate[] = [
     ],
   },
 
+  {
+    id: 'tpl_ai_trading_agent',
+    name: 'Autonomous AI Trading Agent',
+    description: 'Autonomous paper trading agent with Binance API integration and MicroFlux payment gating. Runs continuous loops with buy/sell logic based on price action.',
+    category: 'trading',
+    tags: ['ai', 'agent', 'binance', 'paper-trading', 'automation'],
+    difficulty: 'advanced',
+    estimatedGas: '0.001 ALGO (per payment)',
+    author: 'MICROFLUX-X1',
+    nodes: [
+      {
+        id: 'n1',
+        type: 'timer_loop',
+        label: 'Agent Loop: 10s',
+        category: 'trigger',
+        config: { interval: 10000 },
+        position: { x: 50, y: 250 },
+      },
+      {
+        id: 'n2',
+        type: 'app_call',
+        label: 'Verify MicroFlux Payment',
+        category: 'logic',
+        config: { app_id: 758592157, method: 'execute' },
+        position: { x: 300, y: 250 },
+      },
+      {
+        id: 'n3',
+        type: 'http_request',
+        label: 'Fetch BTC/USDT (Binance)',
+        category: 'defi',
+        config: { url: 'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', method: 'GET' },
+        position: { x: 550, y: 250 },
+      },
+      {
+        id: 'n4',
+        type: 'filter',
+        label: 'Trade Logic Check',
+        category: 'logic',
+        config: { condition: 'gt', field: 'price', value: 65000 },
+        position: { x: 800, y: 250 },
+      },
+      {
+        id: 'n5',
+        type: 'debug_log',
+        label: 'Execute Paper Trade',
+        category: 'action',
+        config: { message: 'Agent action: BUY/SELL executed via Paper Engine' },
+        position: { x: 1050, y: 250 },
+      },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      { id: 'e2', source: 'n2', target: 'n3' },
+      { id: 'e3', source: 'n3', target: 'n4' },
+      { id: 'e4', source: 'n4', target: 'n5' },
+    ],
+  },
+
   // ── AUTOMATION ──────────────────────────────
   {
     id: 'tpl_scheduled_payment',
