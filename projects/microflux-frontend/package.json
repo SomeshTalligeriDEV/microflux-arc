@@ -39,7 +39,7 @@
     "tslib": "^2.6.2"
   },
   "scripts": {
-    "generate:app-clients": "command -v algokit >/dev/null 2>&1 && algokit project link --all || echo AlgoKit CLI not found on PATH, skipping project link",
+    "generate:app-clients": "if [ \"$VERCEL\" = \"1\" ]; then echo Vercel build detected, skipping app client generation; elif command -v algokit >/dev/null 2>&1; then algokit project link --all; else echo AlgoKit CLI not found on PATH, skipping project link; fi",
     "dev": "npm run generate:app-clients && vite",
     "build": "npm run generate:app-clients && tsc && vite build",
     "preview": "vite preview"
