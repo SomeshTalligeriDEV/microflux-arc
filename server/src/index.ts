@@ -25,7 +25,7 @@ const app: Express = express();
 const port = process.env.PORT || 8000;
 
 app.use(cors({
-  origin: 'http://localhost:5173', // or '*' for hackathon speed
+  origin: 'https://dep-9e84fdc2-9d64-4872-972f-418421012d17.tyzo.nodeops.app/' || 'http://localhost:5173', // or '*' for hackathon speed
   methods: ['GET', 'POST', 'PATCH', 'DELETE'],
   credentials: true
 }));
