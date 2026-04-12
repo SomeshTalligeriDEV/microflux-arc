@@ -22,7 +22,13 @@ type DraftWorkflowPayload = {
 };
 
 const Home: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState('home');
+  const getInitialPage = () => {
+    const p = window.location.pathname.replace(/^\/+/, '');
+    const validPages = ['builder', 'marketplace', 'ai', 'market', 'saved'];
+    return validPages.includes(p) ? p : 'home';
+  };
+  
+  const [currentPage, setCurrentPage] = useState(getInitialPage);
   const [openWalletModal, setOpenWalletModal] = useState(false);
   const [openTelegramLinkModal, setOpenTelegramLinkModal] = useState(false);
   const { activeAddress, transactionSigner } = useWallet();
@@ -81,8 +87,18 @@ const Home: React.FC = () => {
     }
   }, [activeAddress]);
 
+  useEffect(() => {
+    const handlePopState = () => setCurrentPage(getInitialPage());
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const handleNavigate = useCallback((page: string) => {
     setCurrentPage(page);
+    const urlPath = page === 'home' ? '/' : `/${page}`;
+    if (window.location.pathname !== urlPath) {
+      window.history.pushState(null, '', urlPath);
+    }
   }, []);
 
   const toggleWalletModal = useCallback(() => {
@@ -103,8 +119,8 @@ const Home: React.FC = () => {
     setWorkflowEdges(edges);
     setWorkflowName(name);
     setSelectedWorkflowId(workflowId);
-    setCurrentPage('builder');
-  }, []);
+    handleNavigate('builder');
+  }, [handleNavigate]);
 
   const normalizeLoadedNode = useCallback((node: any, index: number): AINode => {
     const type = String(node?.type ?? 'debug_log');
@@ -165,8 +181,8 @@ const Home: React.FC = () => {
     setWorkflowEdges(edges);
     setWorkflowName(String(draftWorkflow?.name ?? 'AI Draft Workflow'));
     setSelectedWorkflowId(null); // Draft only; not saved yet.
-    setCurrentPage('builder');
-  }, [normalizeLoadedEdge, normalizeLoadedNode]);
+    handleNavigate('builder');
+  }, [normalizeLoadedEdge, normalizeLoadedNode, handleNavigate]);
 
   const renderPage = () => {
     switch (currentPage) {
