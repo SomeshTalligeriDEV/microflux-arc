@@ -88,8 +88,9 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
   const [rightPanel, setRightPanel] = useState<'trade' | 'agent' | 'recurring'>('trade');
   const autoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
-  // ── Avoid Stale Closures ──
+  // ── Avoid Stale Closures & Race Conditions ──
   const handleExecuteConditionRef = useRef<((cond: MarketCondition) => Promise<void>) | null>(null);
+  const activeExecutionsRef = useRef<Set<string>>(new Set());
 
   // ── Fetch Prices & Evaluate Conditions ───
   const fetchPrices = useCallback(async () => {
@@ -120,20 +121,20 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
       if (newlyMet.length > 0) {
         setTradeNotif(`Condition triggered: ${formatCondition(newlyMet[0])}`);
         setTimeout(() => setTradeNotif(''), 5000);
-        
-        // Auto-Execute AI Agent bypasses manual approval click
-        if (autoExecRef.current) {
-          setTimeout(() => {
-            newlyMet.forEach(cond => {
-              if (executingId !== cond.id) {
-                if (handleExecuteConditionRef.current) {
-                  handleExecuteConditionRef.current(cond);
-                }
-              }
-            });
-          }, 1000);
-        }
       }
+      
+      // Auto-Execute ALL met conditions autonomously to the connected wallet
+      const allMet = getMetConditions();
+      if (allMet.length > 0) {
+        setTimeout(() => {
+          allMet.forEach(cond => {
+            if (handleExecuteConditionRef.current) {
+              handleExecuteConditionRef.current(cond);
+            }
+          });
+        }, 1000);
+      }
+
       setConditionsList(getConditions());
       setAgent(getAgentState());
     } catch (err) {
@@ -220,6 +221,11 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
       return;
     }
 
+    if (activeExecutionsRef.current.has(cond.id)) {
+      return;
+    }
+    activeExecutionsRef.current.add(cond.id);
+
     setExecutingId(cond.id);
     setExecMessage('Preparing transaction...');
 
@@ -252,8 +258,6 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
       });
 
       setExecMessage('Waiting for wallet signature...');
-
-      const encodedTxn = txn.toByte();
       const signedTxns = await transactionSigner(
         [txn],
         [0]
@@ -281,6 +285,7 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
         : `Error: ${msg}`);
       setTimeout(() => setExecMessage(''), 5000);
     } finally {
+      activeExecutionsRef.current.delete(cond.id);
       setExecutingId(null);
     }
   }, [activeAddress, transactionSigner, algoPrice]);
