@@ -6,6 +6,7 @@ import { handleTelegramUpdate } from './controllers/webhook.controller';
 import userRoutes from './routes/user.routes';
 import workflowRoutes from './routes/workflow.routes';
 import sheetsRoutes from './routes/sheets.routes';
+import executionRoutes from './routes/execution.routes';
 import { parseIntent as parseIntentFromAi } from './core/ai/intentParser';
 
 import path from 'path';
@@ -145,6 +146,9 @@ app.use('/api/workflows', workflowRoutes);
 
 //sheets routes
 app.use('/api/sheets', sheetsRoutes);
+
+//execution routes
+app.use('/api/execution', executionRoutes);
 
 pollTelegram();
 

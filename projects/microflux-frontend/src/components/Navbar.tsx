@@ -1,4 +1,5 @@
 import React from 'react';
+import { NavLink } from 'react-router-dom';
 import { truncateAddress } from '../services/walletService';
 
 interface NavbarProps {
@@ -34,40 +35,29 @@ const Navbar: React.FC<NavbarProps> = ({
 
       <ul className="navbar-links">
         <li>
-          <a
-            href="#"
-            className={currentPage === 'builder' ? 'active' : ''}
-            onClick={(e) => { e.preventDefault(); onNavigate('builder'); }}
-          >
+          <NavLink to="/builder" className={currentPage === 'builder' ? 'active' : ''}>
             Builder
-          </a>
+          </NavLink>
         </li>
         <li>
-          <a
-            href="#"
-            className={currentPage === 'marketplace' ? 'active' : ''}
-            onClick={(e) => { e.preventDefault(); onNavigate('marketplace'); }}
-          >
+          <NavLink to="/marketplace" className={currentPage === 'marketplace' ? 'active' : ''}>
             Marketplace
-          </a>
+          </NavLink>
         </li>
         <li>
-          <a
-            href="#"
-            className={currentPage === 'market' ? 'active' : ''}
-            onClick={(e) => { e.preventDefault(); onNavigate('market'); }}
-          >
+          <NavLink to="/market" className={currentPage === 'market' ? 'active' : ''}>
             Market
-          </a>
+          </NavLink>
         </li>
         <li>
-          <a
-            href="#"
-            className={currentPage === 'saved' ? 'active' : ''}
-            onClick={(e) => { e.preventDefault(); onNavigate('saved'); }}
-          >
+          <NavLink to="/saved" className={currentPage === 'saved' ? 'active' : ''}>
             Saved Workflows
-          </a>
+          </NavLink>
+        </li>
+        <li>
+          <NavLink to="/ai" className={currentPage === 'ai' ? 'active' : ''}>
+            AI
+          </NavLink>
         </li>
       </ul>
 

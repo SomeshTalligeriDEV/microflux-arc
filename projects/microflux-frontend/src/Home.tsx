@@ -1,5 +1,6 @@
 import { useWallet } from '@txnlab/use-wallet-react';
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import HeroSection from './components/HeroSection';
 import WorkflowBuilder from './components/WorkflowBuilder';
@@ -12,7 +13,6 @@ import { fetchAccountBalance } from './services/walletService';
 import { getAlgodConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs';
 import { api, type Workflow } from './services/api';
 import SavedWorkflows from './components/SavedWorkflows';
-import TelegramLinkPanel from './components/TelegramLinkPanel';
 import TelegramLinkModal from './components/TelegramLinkModal';
 
 type DraftWorkflowPayload = {
@@ -21,27 +21,34 @@ type DraftWorkflowPayload = {
   edges?: unknown[];
 };
 
+const ROUTE_PAGE_MAP: Record<string, string> = {
+  '/': 'home',
+  '/builder': 'builder',
+  '/marketplace': 'marketplace',
+  '/market': 'market',
+  '/saved': 'saved',
+  '/ai': 'ai',
+};
+
 const Home: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState('home');
   const [openWalletModal, setOpenWalletModal] = useState(false);
   const [openTelegramLinkModal, setOpenTelegramLinkModal] = useState(false);
   const { activeAddress, transactionSigner } = useWallet();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  // Wallet balance state
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [isLinked, setIsLinked] = useState(false);
 
-  // Network name
   const algoConfig = getAlgodConfigFromViteEnvironment();
   const networkName = algoConfig.network === '' ? 'localnet' : algoConfig.network.toLowerCase();
+  const currentPage = ROUTE_PAGE_MAP[location.pathname] ?? 'home';
 
-  // Workflow state (shared between AI/Marketplace/Builder)
   const [workflowNodes, setWorkflowNodes] = useState<AINode[]>([]);
   const [workflowEdges, setWorkflowEdges] = useState<AIEdge[]>([]);
   const [workflowName, setWorkflowName] = useState('');
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
 
-  // Auto-fetch balance on wallet connect
   useEffect(() => {
     if (activeAddress) {
       fetchAccountBalance(activeAddress).then((bal) => {
@@ -82,8 +89,8 @@ const Home: React.FC = () => {
   }, [activeAddress]);
 
   const handleNavigate = useCallback((page: string) => {
-    setCurrentPage(page);
-  }, []);
+    navigate(page === 'home' ? '/' : `/${page}`);
+  }, [navigate]);
 
   const toggleWalletModal = useCallback(() => {
     setOpenWalletModal((prev) => !prev);
@@ -97,14 +104,13 @@ const Home: React.FC = () => {
     setWalletBalance(balance);
   }, []);
 
-  // Load workflow from AI or Marketplace
   const handleLoadWorkflow = useCallback((nodes: AINode[], edges: AIEdge[], name: string, workflowId: string | null = null) => {
     setWorkflowNodes(nodes);
     setWorkflowEdges(edges);
     setWorkflowName(name);
     setSelectedWorkflowId(workflowId);
-    setCurrentPage('builder');
-  }, []);
+    navigate('/builder');
+  }, [navigate]);
 
   const normalizeLoadedNode = useCallback((node: any, index: number): AINode => {
     const type = String(node?.type ?? 'debug_log');
@@ -146,7 +152,6 @@ const Home: React.FC = () => {
     const rawNodes = Array.isArray(draftWorkflow?.nodes) ? draftWorkflow.nodes : [];
     const rawEdges = Array.isArray(draftWorkflow?.edges) ? draftWorkflow.edges : [];
 
-    // AI may return config either at node.config or node.data.config.
     const nodes = rawNodes.map((node: any, index) => {
       const normalized = normalizeLoadedNode(node, index);
       const data = node?.data && typeof node.data === 'object' ? node.data : {};
@@ -164,62 +169,9 @@ const Home: React.FC = () => {
     setWorkflowNodes(nodes);
     setWorkflowEdges(edges);
     setWorkflowName(String(draftWorkflow?.name ?? 'AI Draft Workflow'));
-    setSelectedWorkflowId(null); // Draft only; not saved yet.
-    setCurrentPage('builder');
-  }, [normalizeLoadedEdge, normalizeLoadedNode]);
-
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'builder':
-        return (
-          <WorkflowBuilder
-            initialNodes={workflowNodes}
-            initialEdges={workflowEdges}
-            workflowName={workflowName}
-            workflowId={selectedWorkflowId}
-            activeAddress={activeAddress ?? null}
-            transactionSigner={transactionSigner}
-            networkName={networkName}
-            onBalanceUpdate={handleBalanceUpdate}
-          />
-        );
-      case 'marketplace':
-        return (
-          <Marketplace
-            onUseTemplate={handleLoadWorkflow}
-            onNavigateToBuilder={() => setCurrentPage('builder')}
-          />
-        );
-      case 'ai':
-        return (
-          <AIPage
-            onLoadDraft={handleLoadDraft}
-            activeAddress={activeAddress ?? null}
-          />
-        );
-      case 'market':
-        return (
-          <MarketDataPanel
-            activeAddress={activeAddress ?? null}
-            transactionSigner={transactionSigner}
-            networkName={networkName}
-          />
-        );
-      case 'saved':
-        return (
-          <SavedWorkflows
-            activeAddress={activeAddress ?? null}
-            onOpenWorkflow={handleOpenSavedWorkflow}
-          />
-        );
-      default:
-        return (
-          <>
-            <HeroSection onNavigate={handleNavigate} />
-          </>
-        );
-    }
-  };
+    setSelectedWorkflowId(null);
+    navigate('/builder');
+  }, [navigate, normalizeLoadedEdge, normalizeLoadedNode]);
 
   return (
     <div className="app-layout">
@@ -234,7 +186,62 @@ const Home: React.FC = () => {
         onLinkTelegram={toggleTelegramLinkModal}
       />
 
-      {renderPage()}
+      <Routes>
+        <Route path="/" element={<HeroSection onNavigate={handleNavigate} />} />
+        <Route
+          path="/builder"
+          element={
+            <WorkflowBuilder
+              initialNodes={workflowNodes}
+              initialEdges={workflowEdges}
+              workflowName={workflowName}
+              workflowId={selectedWorkflowId}
+              activeAddress={activeAddress ?? null}
+              transactionSigner={transactionSigner}
+              networkName={networkName}
+              onBalanceUpdate={handleBalanceUpdate}
+            />
+          }
+        />
+        <Route
+          path="/marketplace"
+          element={
+            <Marketplace
+              onUseTemplate={handleLoadWorkflow}
+              onNavigateToBuilder={() => navigate('/builder')}
+            />
+          }
+        />
+        <Route
+          path="/market"
+          element={
+            <MarketDataPanel
+              activeAddress={activeAddress ?? null}
+              transactionSigner={transactionSigner}
+              networkName={networkName}
+            />
+          }
+        />
+        <Route
+          path="/saved"
+          element={
+            <SavedWorkflows
+              activeAddress={activeAddress ?? null}
+              onOpenWorkflow={handleOpenSavedWorkflow}
+            />
+          }
+        />
+        <Route
+          path="/ai"
+          element={
+            <AIPage
+              onLoadDraft={handleLoadDraft}
+              activeAddress={activeAddress ?? null}
+            />
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
 
       <ConnectWallet
         openModal={openWalletModal}
