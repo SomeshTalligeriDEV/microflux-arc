@@ -1,16 +1,14 @@
 import { SupportedWallet, WalletId, WalletManager, WalletProvider } from '@txnlab/use-wallet-react'
 import { SnackbarProvider } from 'notistack'
+import { BrowserRouter, Route, Routes, useParams } from 'react-router-dom'
 import Home from './Home'
 import ApproveExecution from './ApproveExecution'
 import { getAlgodConfigFromViteEnvironment, getKmdConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
-
-// ── Determine supported wallets based on network ──
 
 const network = import.meta.env.VITE_ALGOD_NETWORK || 'testnet'
 let supportedWallets: SupportedWallet[]
 
 if (network === 'localnet') {
-  // LocalNet: use KMD wallet for development
   try {
     const kmdConfig = getKmdConfigFromViteEnvironment()
     supportedWallets = [
@@ -31,7 +29,6 @@ if (network === 'localnet') {
     ]
   }
 } else {
-  // Testnet / Mainnet: use real wallets (Pera, Defly, Lute)
   supportedWallets = [
     { id: WalletId.PERA },
     { id: WalletId.DEFLY },
@@ -40,14 +37,15 @@ if (network === 'localnet') {
 }
 
 console.log(`[MICROFLUX] Network: ${network}`)
-// ── App Component ─────────────────────────────
+
+function ApproveExecutionRoute() {
+  const { token } = useParams<{ token: string }>()
+
+  return token ? <ApproveExecution token={decodeURIComponent(token)} /> : <Home />
+}
 
 export default function App() {
   const algodConfig = getAlgodConfigFromViteEnvironment()
-  const path = window.location.pathname
-  const approveToken = path.startsWith('/approve/')
-    ? decodeURIComponent(path.replace('/approve/', '').split('/')[0] || '')
-    : null
 
   console.log(`[MICROFLUX] Algod server: ${algodConfig.server}`)
   console.log(`[MICROFLUX] Algod port: ${algodConfig.port || '(none)'}`)
@@ -72,7 +70,12 @@ export default function App() {
   return (
     <SnackbarProvider maxSnack={3}>
       <WalletProvider manager={walletManager}>
-        {approveToken ? <ApproveExecution token={approveToken} /> : <Home />}
+        <BrowserRouter>
+          <Routes>
+            <Route path="/approve/:token" element={<ApproveExecutionRoute />} />
+            <Route path="/*" element={<Home />} />
+          </Routes>
+        </BrowserRouter>
       </WalletProvider>
     </SnackbarProvider>
   )

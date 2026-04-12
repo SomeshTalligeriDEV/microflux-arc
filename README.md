@@ -1,9 +1,7 @@
-
 # MICROFLUX
 ## Intelligent Workflow Orchestration for the Algorand Ecosystem
 
 <div align="left">
-
 [![Network: Testnet](https://img.shields.io/badge/Algorand-Testnet-000000?style=for-the-badge&logo=algorand&logoColor=white)](https://lora.algokit.io/testnet/application/758592157)
 [![Live Demo](https://img.shields.io/badge/Live_Demo-Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://microflux-frontend.vercel.app)
 [![Protocol: ARC-4](https://img.shields.io/badge/Protocol-ARC--4-000000?style=for-the-badge&logo=python&logoColor=white)](./projects/microflux-contracts)
