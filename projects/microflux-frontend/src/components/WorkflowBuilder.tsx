@@ -628,6 +628,9 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         case 'webhook_trigger':
           logs.push(`${node.label}: Webhook received`);
           break;
+        case 'ai_trigger':
+          logs.push(`[OK] ${node.label}: LLM Intent evaluated via ${node.config.provider}`);
+          break;
         case 'get_quote':
         case 'price_feed':
           logs.push(`[PRICE] ${node.label}: ALGO = $0.24 (cached)`);
@@ -1561,6 +1564,72 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                       </button>
                     )}
                   </div>
+                )}
+                {selectedNode.type === 'ai_trigger' && (
+                  <>
+                    <div style={{ marginBottom: '12px' }}>
+                      <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                        AI Provider
+                      </label>
+                      <select
+                        className="input"
+                        value={String(selectedNode.config.provider || 'Groq')}
+                        onChange={(e) => {
+                          setNodes((prev) =>
+                            prev.map((n) =>
+                              n.id === selectedNode.id
+                                ? { ...n, config: { ...n.config, provider: e.target.value } }
+                                : n
+                            )
+                          );
+                        }}
+                      >
+                        <option value="Groq">Groq</option>
+                        <option value="Gemini">Gemini</option>
+                        <option value="OpenAI">OpenAI</option>
+                      </select>
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                        API Key (Local only)
+                      </label>
+                      <input
+                        className="input"
+                        type="password"
+                        placeholder="sk-..."
+                        value={String(selectedNode.config.apiKey || '')}
+                        onChange={(e) => {
+                          setNodes((prev) =>
+                            prev.map((n) =>
+                              n.id === selectedNode.id
+                                ? { ...n, config: { ...n.config, apiKey: e.target.value } }
+                                : n
+                            )
+                          );
+                        }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                        Intent Prompt Trigger
+                      </label>
+                      <textarea
+                        className="input"
+                        placeholder="Condition to trigger upon..."
+                        rows={3}
+                        value={String(selectedNode.config.prompt || '')}
+                        onChange={(e) => {
+                          setNodes((prev) =>
+                            prev.map((n) =>
+                              n.id === selectedNode.id
+                                ? { ...n, config: { ...n.config, prompt: e.target.value } }
+                                : n
+                            )
+                          );
+                        }}
+                      />
+                    </div>
+                  </>
                 )}
                 {('amount' in selectedNode.config) && (
                   <div style={{ marginBottom: '12px' }}>

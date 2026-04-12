@@ -80,6 +80,16 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     color: CATEGORY_COLORS.trigger,
     defaultConfig: { command: '/start', chatId: '' },
   },
+  {
+    type: 'ai_trigger',
+    label: 'AI Copilot Trigger',
+    description: 'Trigger workflow via LLM intent matching',
+    category: 'trigger',
+    icon: '✦',
+    isReal: false,
+    color: CATEGORY_COLORS.trigger,
+    defaultConfig: { provider: 'Groq', apiKey: '', prompt: 'Detect user intent to execute execution flow...' },
+  },
 
   // ── ACTIONS ─────────────────────────────────
   {

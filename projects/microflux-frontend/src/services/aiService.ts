@@ -39,7 +39,7 @@ type BackendBuildResult = {
 };
 
 function inferCategory(type: string): NodeCategory {
-  if (['telegram_command', 'timer_loop', 'wallet_event', 'webhook_trigger'].includes(type)) return 'trigger';
+  if (['telegram_command', 'timer_loop', 'wallet_event', 'webhook_trigger', 'ai_trigger'].includes(type)) return 'trigger';
   if (['send_payment', 'asa_transfer', 'app_call', 'http_request'].includes(type)) return 'action';
   if (['delay', 'filter', 'debug_log'].includes(type)) return 'logic';
   if (['get_quote', 'price_feed', 'tinyman_swap'].includes(type)) return 'defi';
