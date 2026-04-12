@@ -2,7 +2,6 @@
 ## Intelligent Workflow Orchestration for the Algorand Ecosystem
 
 <div align="left">
-
 [![Network: Testnet](https://img.shields.io/badge/Algorand-Testnet-000000?style=for-the-badge&logo=algorand&logoColor=white)](https://lora.algokit.io/testnet/application/758592157)
 [![Live Demo](https://img.shields.io/badge/Live_Demo-Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://microflux-frontend.vercel.app)
 [![Protocol: ARC-4](https://img.shields.io/badge/Protocol-ARC--4-000000?style=for-the-badge&logo=python&logoColor=white)](./projects/microflux-contracts)
@@ -36,6 +35,10 @@ In the landscape of modern decentralized finance, MicroFlux serves as a programm
 | **Hybrid Connectivity** | Real-time Web2/Web3 Bridge | Seamlessly exports blockchain state to Google Sheets and Telegram. |
 | **Visual Architecture** | React Flow Logic Canvas | Provides a low-code environment for complex vault and treasury tasks. |
 | **AI Synthesis** | LLM-Integrated Copilot | Converts natural language descriptions into valid on-chain execution paths. |
+| **DeFi Liquidity Routing** | Native Tinyman V2 Integration | Executes atomic ALGO/USDC swaps directly against Testnet AMM pools. |
+| **Autonomous Signer Agents** | Loop-Driven Trading Execution | AI agents can bypass manual approval queues for self-executing conditions. |
+| **Deep Link Architecture** | Native HTML5 History Routing | Enables seamless URL sharing for specific app states (e.g. `/builder`, `/ai`). |
+| **On-Chain Telemetry** | Syncs Real-Time Global States | Dedicated internal Lora explorer for mapping and monitoring transaction logic. |
 
 ---
 

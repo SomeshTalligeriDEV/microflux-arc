@@ -590,7 +590,7 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
       }
 
       const keyboard = {
-        inline_keyboard: workflows.map((workflow) => ([
+        inline_keyboard: workflows.map((workflow: { id: string; name: string }) => ([
           {
             text: workflow.name,
             callback_data: `execute_${workflow.id}`,
@@ -613,7 +613,7 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
       });
 
       const nfdDisplay = linkedUser.nfd || `${linkedUser.walletAddress.slice(0, 8)}...`;
-      const wfList = workflows.map((w) => `• ${w.name}`).join('\n') || 'No workflows saved yet.';
+      const wfList = workflows.map((w: { name: string }) => `• ${w.name}`).join('\n') || 'No workflows saved yet.';
 
       await sendTelegramMessage(
         chatId,

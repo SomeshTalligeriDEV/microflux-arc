@@ -26,7 +26,7 @@ const app: Express = express();
 const port = process.env.PORT || 8000;
 
 app.use(cors({
-  origin: 'http://localhost:5173', // or '*' for hackathon speed
+  origin: ['http://localhost:5173', 'https://microflux-frontend.vercel.app'],
   methods: ['GET', 'POST', 'PATCH', 'DELETE'],
   credentials: true
 }));

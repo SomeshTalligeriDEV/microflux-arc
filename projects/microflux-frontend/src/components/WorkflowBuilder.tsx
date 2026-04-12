@@ -47,6 +47,13 @@ import AICopilotPanel from './AICopilotPanel';
 import algosdk from 'algosdk';
 import type { AINode, AIEdge } from '../services/aiService';
 import { api } from '../services/api';
+import {
+  executeSwap as executeTinymanSwap,
+  getSwapQuote,
+  formatAssetAmount,
+  TINYMAN_KNOWN_ASSETS,
+  type TinymanSwapConfig,
+} from '../services/tinymanService';
 
 // Execution modes
 type ExecutionMode = 'direct' | 'contract' | 'atomic';
@@ -102,6 +109,13 @@ const MicrofluxNode: React.FC<NodeProps<CanvasNodeData>> = ({ data, selected }) 
         )}
         {data.type === 'asa_transfer' && (
           <div className="microflux-node__meta">ASA #{String(data.config.asset_id ?? 0)}</div>
+        )}
+        {data.type === 'tinyman_swap' && (
+          <div className="microflux-node__meta">
+            {TINYMAN_KNOWN_ASSETS[Number(data.config.fromAssetId)]?.unitName ?? `#${data.config.fromAssetId}`}
+            {' → '}
+            {TINYMAN_KNOWN_ASSETS[Number(data.config.toAssetId)]?.unitName ?? `#${data.config.toAssetId}`}
+          </div>
         )}
       </div>
 
@@ -641,6 +655,29 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         case 'discord_notify':
           logs.push(`[DISCORD] ${node.label}: Discord (mock)`);
           break;
+        case 'tinyman_swap': {
+          const fromId = Number(node.config.fromAssetId ?? 0);
+          const toId = Number(node.config.toAssetId ?? 0);
+          const amt = Number(node.config.amount ?? 0);
+          const fromName = TINYMAN_KNOWN_ASSETS[fromId]?.unitName ?? `ASA#${fromId}`;
+          const toName = TINYMAN_KNOWN_ASSETS[toId]?.unitName ?? `ASA#${toId}`;
+          try {
+            const swapConfig: TinymanSwapConfig = {
+              fromAssetId: fromId,
+              toAssetId: toId,
+              amount: amt,
+              slippage: Number(node.config.slippage ?? 1),
+            };
+            const quote = await getSwapQuote(swapConfig);
+            logs.push(`[SWAP] ${node.label}: ${formatAssetAmount(amt, fromId)} → ~${formatAssetAmount(quote.expectedAmountOut, toId)}`);
+            if (quote.priceImpact > 0) {
+              logs.push(`   Price impact: ${(quote.priceImpact * 100).toFixed(2)}%`);
+            }
+          } catch {
+            logs.push(`[SWAP] ${node.label}: Swap ${fromName} → ${toName} (quote unavailable — estimated)`);
+          }
+          break;
+        }
         default:
           logs.push(`[NODE] ${node.label}: Processed`);
       }
@@ -846,6 +883,43 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         } else if (Notification.permission !== 'denied') {
           await Notification.requestPermission();
           logs.push(`[NOTIFY] ${node.label}: Permission requested`);
+        }
+        setExecutionLog([...logs]);
+
+      } else if (node.type === 'tinyman_swap' && node.isReal) {
+        const fromId = Number(node.config.fromAssetId ?? 0);
+        const toId = Number(node.config.toAssetId ?? 0);
+        const amt = Number(node.config.amount ?? 0);
+        const slip = Number(node.config.slippage ?? 1);
+        const fromName = TINYMAN_KNOWN_ASSETS[fromId]?.unitName ?? `ASA#${fromId}`;
+        const toName = TINYMAN_KNOWN_ASSETS[toId]?.unitName ?? `ASA#${toId}`;
+
+        logs.push(`[SWAP] ${node.label}: Swapping ${formatAssetAmount(amt, fromId)} → ${toName} via Tinyman V2...`);
+        setExecutionLog([...logs]);
+
+        try {
+          const swapResult = await executeTinymanSwap(
+            activeAddress,
+            { fromAssetId: fromId, toAssetId: toId, amount: amt, slippage: slip },
+            transactionSigner as any,
+          );
+
+          if (swapResult.success) {
+            logs.push(`[OK] ${node.label}: Swap confirmed`);
+            if (swapResult.quote) {
+              logs.push(`   Output: ~${formatAssetAmount(swapResult.quote.expectedAmountOut, toId)}`);
+            }
+            if (swapResult.txId) {
+              logs.push(`   TX: ${swapResult.txId}`);
+              logs.push(`   ${getExplorerTxUrl(swapResult.txId, networkName)}`);
+            }
+          } else {
+            logs.push(`[FAIL] ${node.label}: ${swapResult.error}`);
+          }
+        } catch (swapErr) {
+          const msg = swapErr instanceof Error ? swapErr.message : 'Tinyman swap failed';
+          logs.push(`[WARN] ${node.label}: Swap unavailable — ${msg}`);
+          logs.push(`   Workflow continues (swap node skipped)`);
         }
         setExecutionLog([...logs]);
 
@@ -1565,8 +1639,80 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                     />
                   </div>
                 )}
+                {selectedNode.type === 'tinyman_swap' && (
+                  <>
+                    <div style={{ marginBottom: '12px' }}>
+                      <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                        From Asset ID (0 = ALGO)
+                      </label>
+                      <input
+                        className="input"
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={String(selectedNode.config.fromAssetId ?? 0)}
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? 0 : Number(e.target.value);
+                          setNodes((prev) =>
+                            prev.map((n) =>
+                              n.id === selectedNode.id
+                                ? { ...n, config: { ...n.config, fromAssetId: val } }
+                                : n
+                            )
+                          );
+                        }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                        To Asset ID (e.g. 31566704 = USDC)
+                      </label>
+                      <input
+                        className="input"
+                        type="number"
+                        min="0"
+                        placeholder="31566704"
+                        value={String(selectedNode.config.toAssetId ?? 0)}
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? 0 : Number(e.target.value);
+                          setNodes((prev) =>
+                            prev.map((n) =>
+                              n.id === selectedNode.id
+                                ? { ...n, config: { ...n.config, toAssetId: val } }
+                                : n
+                            )
+                          );
+                        }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                        Slippage Tolerance (%)
+                      </label>
+                      <input
+                        className="input"
+                        type="number"
+                        min="0.1"
+                        max="50"
+                        step="0.1"
+                        placeholder="1"
+                        value={String(selectedNode.config.slippage ?? 1)}
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? 1 : Number(e.target.value);
+                          setNodes((prev) =>
+                            prev.map((n) =>
+                              n.id === selectedNode.id
+                                ? { ...n, config: { ...n.config, slippage: val } }
+                                : n
+                            )
+                          );
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
                 {Object.entries(selectedNode.config)
-                  .filter(([key]) => !['receiver', 'amount', 'asset_id', 'app_id', 'method', 'args'].includes(key))
+                  .filter(([key]) => !['receiver', 'amount', 'asset_id', 'app_id', 'method', 'args', 'fromAssetId', 'toAssetId', 'slippage'].includes(key))
                   .map(([key, value]) => (
                     <div key={key} style={{ marginBottom: '10px' }}>
                       <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>

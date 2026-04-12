@@ -5,13 +5,14 @@ import {
   ComposedChart, Bar, Cell,
 } from 'recharts';
 import {
-  getBinancePrice, getMultiplePrices, formatChange, getTokenName,
+  getTinymanPrice, getMultiplePrices, formatChange, getTokenName,
   getKlines, getOrderBook,
-  type BinancePrice, type PricePoint, type Kline, type OrderBookEntry,
-} from '../services/binanceService';
+  type TinymanPrice, type PricePoint, type Kline, type OrderBookEntry,
+} from '../services/tinymanDataService';
 import {
   getPortfolio, updatePortfolioValue, executeBuy, executeSell,
   getPaymentLogs, resetPortfolio, getAIStrategy, executeAIDecision,
+  logRealTrade, logRealPayment,
   type Portfolio, type AIDecision, type PaymentLog,
 } from '../services/paperTradingService';
 import {
@@ -22,7 +23,7 @@ import {
 } from '../services/conditionService';
 import algosdk from 'algosdk';
 import { getAlgodConfigFromViteEnvironment } from '../utils/network/getAlgoClientConfigs';
-
+import { executeSwap } from '../services/tinymanService';
 // ── Props ────────────────────────────────────
 interface MarketDataPanelProps {
   activeAddress?: string | null;
@@ -31,7 +32,7 @@ interface MarketDataPanelProps {
 }
 
 // ── Sub-tab type ─────────────────────────────
-type BottomTab = 'trades' | 'conditions' | 'payments' | 'ai';
+type BottomTab = 'trades' | 'conditions' | 'payments' | 'ai' | 'explorer';
 
 // ── Main Component ───────────────────────────
 const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
@@ -40,8 +41,9 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
   networkName,
 }) => {
   // Price State
-  const [algoPrice, setAlgoPrice] = useState<BinancePrice | null>(null);
-  const [otherPrices, setOtherPrices] = useState<BinancePrice[]>([]);
+  const [selectedBaseAsset, setSelectedBaseAsset] = useState('ALGO');
+  const [algoPrice, setAlgoPrice] = useState<TinymanPrice | null>(null);
+  const [otherPrices, setOtherPrices] = useState<TinymanPrice[]>([]);
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
   const [lastUpdate, setLastUpdate] = useState('');
 
@@ -59,6 +61,9 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
   const [aiMessage, setAiMessage] = useState('');
   const [groqKey, setGroqKey] = useState('');
   const [autoMode, setAutoMode] = useState(false);
+  const [autoExecuteAgent, setAutoExecuteAgent] = useState(false);
+  const autoExecRef = useRef(false);
+  useEffect(() => { autoExecRef.current = autoExecuteAgent; }, [autoExecuteAgent]);
 
   // Condition Agent State
   const [condOperator, setCondOperator] = useState<ConditionOperator>('lt');
@@ -80,37 +85,54 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
   const [activeTab, setActiveTab] = useState<BottomTab>('conditions');
   const [loading, setLoading] = useState(true);
   const [tradeNotif, setTradeNotif] = useState('');
-  const [rightPanel, setRightPanel] = useState<'trade' | 'agent'>('agent');
+  const [rightPanel, setRightPanel] = useState<'trade' | 'agent' | 'recurring'>('trade');
   const autoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  // ── Avoid Stale Closures ──
+  const handleExecuteConditionRef = useRef<((cond: MarketCondition) => Promise<void>) | null>(null);
 
   // ── Fetch Prices & Evaluate Conditions ───
   const fetchPrices = useCallback(async () => {
     try {
-      const [algo, others] = await Promise.all([
-        getBinancePrice('ALGO'),
-        getMultiplePrices(['BTC', 'ETH', 'SOL']),
+      const allTokens = ['ALGO', 'BTC', 'ETH', 'SOL'];
+      const [base, others] = await Promise.all([
+        getTinymanPrice(selectedBaseAsset),
+        getMultiplePrices(allTokens.filter(t => t !== selectedBaseAsset)),
       ]);
-      setAlgoPrice(algo);
+      setAlgoPrice(base);
       setOtherPrices(others);
       setLastUpdate(new Date().toLocaleTimeString());
 
       setPriceHistory(prev => {
         const next = [...prev, {
           time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          price: algo.price,
+          price: base.price,
           timestamp: Date.now(),
         }];
         return next.slice(-60);
       });
 
-      const updated = updatePortfolioValue(algo.price);
+      const updated = updatePortfolioValue(base.price);
       setPortfolio(updated);
 
       // Evaluate conditions against live price
-      const newlyMet = evaluateConditions(algo.price);
+      const newlyMet = evaluateConditions(base.price);
       if (newlyMet.length > 0) {
         setTradeNotif(`Condition triggered: ${formatCondition(newlyMet[0])}`);
         setTimeout(() => setTradeNotif(''), 5000);
+        
+        // Auto-Execute AI Agent bypasses manual approval click
+        if (autoExecRef.current) {
+          setTimeout(() => {
+            newlyMet.forEach(cond => {
+              if (executingId !== cond.id) {
+                if (handleExecuteConditionRef.current) {
+                  handleExecuteConditionRef.current(cond);
+                }
+              }
+            });
+          }, 1000);
+        }
       }
       setConditionsList(getConditions());
       setAgent(getAgentState());
@@ -119,21 +141,21 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedBaseAsset]);
 
   // ── Fetch Klines + Order Book ─────────────
   const fetchChartData = useCallback(async () => {
     try {
       const [klinesData, bookData] = await Promise.all([
-        getKlines('ALGO', chartInterval, 80),
-        getOrderBook('ALGO', 12),
+        getKlines(selectedBaseAsset, chartInterval, 80),
+        getOrderBook(selectedBaseAsset, 12),
       ]);
       setKlines(klinesData);
       setOrderBook(bookData);
     } catch (err) {
       console.error('[Market] Chart data error:', err);
     }
-  }, [chartInterval]);
+  }, [chartInterval, selectedBaseAsset]);
 
   useEffect(() => {
     fetchChartData();
@@ -179,14 +201,22 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
     createCondition(condOperator, price, condAction, amount, condReceiver || undefined);
     setConditionsList(getConditions());
     setAgent(getAgentState());
-    setTradeNotif(`Condition created: ${condAction === 'send_payment' ? 'Send' : condAction === 'sell_algo' ? 'Sell' : condAction === 'buy_algo' ? 'Buy' : 'Execute'} ${amount} ALGO when price ${condOperator === 'lt' ? '<' : '>'} $${price.toFixed(4)}`);
+    setTradeNotif(`Condition created: ${condAction === 'send_payment' ? 'Send' : condAction === 'buy_algo' ? 'Swap' : 'Execute'} ${amount} ${selectedBaseAsset} when price ${condOperator === 'lt' ? '<' : '>'} $${price.toFixed(4)}`);
     setTimeout(() => setTradeNotif(''), 3000);
-  }, [condOperator, condPrice, condAction, condAmount, condReceiver]);
+  }, [condOperator, condPrice, condAction, condAmount, condReceiver, selectedBaseAsset]);
 
   // ── Execute On-Chain ─────────────────────
   const handleExecuteCondition = useCallback(async (cond: MarketCondition) => {
-    if (!activeAddress || !transactionSigner || !algoPrice) {
+    if (!activeAddress) {
       setExecMessage('Connect your wallet to execute on-chain.');
+      return;
+    }
+    if (!transactionSigner) {
+      setExecMessage('Wallet connected, but transaction signer is unavailable. Please try reconnecting.');
+      return;
+    }
+    if (!algoPrice) {
+      setExecMessage('Waiting for live price data. Please wait a moment...');
       return;
     }
 
@@ -237,8 +267,10 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
       await algosdk.waitForConfirmation(algod, txId, 4);
 
       markExecuted(cond.id, txId);
+      logRealPayment(txId, '0.001 ALGO');
       setConditionsList(getConditions());
       setAgent(getAgentState());
+      setPayments(getPaymentLogs());
       setExecMessage(`Confirmed on-chain: ${txId.substring(0, 16)}...`);
       setTradeNotif(`Transaction confirmed: ${txId.substring(0, 20)}...`);
       setTimeout(() => { setTradeNotif(''); setExecMessage(''); }, 5000);
@@ -253,16 +285,115 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
     }
   }, [activeAddress, transactionSigner, algoPrice]);
 
-  // ── Manual Paper Trade ───────────────────
-  const handleTrade = useCallback(() => {
+  useEffect(() => {
+    handleExecuteConditionRef.current = handleExecuteCondition;
+  }, [handleExecuteCondition]);
+
+  // ── Smart Trade Routing ───────────────────
+  const handleTrade = useCallback(async () => {
     if (!algoPrice) return;
     const amount = parseFloat(tradeAmount);
     if (isNaN(amount) || amount <= 0) return;
+
+    // ── LIVE TESTNET EXECUTION ──
+    if (activeAddress && transactionSigner) {
+      setTradeNotif('Initiating swap on Tinyman...');
+      try {
+        const USDC_ID = 10458941;
+        const ALGO_ID = 0;
+
+        if (selectedBaseAsset !== 'ALGO') {
+          setTradeNotif('Only ALGO/USDC swaps are supported live on Testnet.');
+          setTimeout(() => setTradeNotif(''), 4000);
+          return;
+        }
+        
+        let fromAssetId = 0;
+        let toAssetId = 0;
+
+        if (tradeAction === 'SELL') {
+           // Sell ALGO for USDC
+           fromAssetId = ALGO_ID;
+           toAssetId = USDC_ID;
+        } else {
+           // Buy ALGO with USDC
+           fromAssetId = USDC_ID;
+           toAssetId = ALGO_ID;
+        }
+        
+        // Convert to micro units (both ALGO and testnet USDC are 6 decimals)
+        const microAmount = Math.floor(amount * 1_000_000);
+
+        // ── AUTO OPT-IN CHECK ──
+        if (toAssetId !== ALGO_ID) {
+           const { fetchAccountAssets } = await import('../services/walletService');
+           const assets = await fetchAccountAssets(activeAddress);
+           const isOptedIn = assets.some(a => a.assetId === toAssetId);
+           
+           if (!isOptedIn) {
+              setTradeNotif(`Opting you into Asset ${toAssetId} first...`);
+              try {
+                  const algod = new algosdk.Algodv2('', 'https://testnet-api.algonode.cloud', '');
+                  const suggestedParams = await algod.getTransactionParams().do();
+                  const optInTxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
+                     sender: activeAddress,
+                     receiver: activeAddress,
+                     amount: 0,
+                     assetIndex: toAssetId,
+                     suggestedParams,
+                  });
+                  // Ask user to sign opt-in
+                  const signedOptIn = await transactionSigner([optInTxn], [0]);
+                  await algod.sendRawTransaction(signedOptIn).do();
+                  await algosdk.waitForConfirmation(algod, optInTxn.txID().toString(), 4);
+                  setTradeNotif('Opt-In confirmed! Generating swap quote...');
+              } catch (optErr: any) {
+                  setTradeNotif(`Opt-In rejected or failed: ${optErr.message}`);
+                  setTimeout(() => setTradeNotif(''), 6000);
+                  return;
+              }
+           }
+        }
+        
+        const result = await executeSwap(
+          activeAddress,
+          {
+            fromAssetId,
+            toAssetId,
+            amount: microAmount,
+            slippage: 1, // 1%
+          },
+          transactionSigner
+        );
+
+        if (result.success && result.txId) {
+          logRealTrade(
+            tradeAction,
+            fromAssetId === 0 ? 'ALGO' : 'USDC',
+            algoPrice.price,
+            tradeAction === 'BUY' ? (amount / algoPrice.price) : amount,
+            tradeAction === 'BUY' ? amount : (amount * algoPrice.price),
+            result.txId
+          );
+          setPortfolio(getPortfolio());
+          setTradeNotif(`Swap Confirmed: ${result.txId.substring(0, 10)}...`);
+        } else {
+          setTradeNotif(`Swap Failed: ${result.error}`);
+        }
+        setTimeout(() => setTradeNotif(''), 5000);
+      } catch (err: any) {
+        setTradeNotif(err.message?.includes('cancelled') ? 'Swap cancelled by user' : `Failed: ${err.message}`);
+        setTimeout(() => setTradeNotif(''), 6000);
+      }
+      return;
+    }
+
+    // ── PAPER TRADE FALLBACK (IF NO WALLET) ──
     const result = tradeAction === 'BUY'
       ? executeBuy(algoPrice.price, amount)
       : executeSell(algoPrice.price, amount);
     if (result.success && result.trade) {
-      setTradeNotif(`${result.trade.action}: ${result.trade.amount.toFixed(2)} ALGO at $${result.trade.price.toFixed(4)}`);
+      setTradeNotif(`${result.trade.action}: ${result.trade.amount.toFixed(2)} ${selectedBaseAsset} at $${result.trade.price.toFixed(4)}`);
       setTimeout(() => setTradeNotif(''), 3000);
     } else {
       setTradeNotif(result.error ?? 'Trade failed');
@@ -270,7 +401,7 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
     }
     setPortfolio(getPortfolio());
     setPayments(getPaymentLogs());
-  }, [algoPrice, tradeAmount, tradeAction]);
+  }, [algoPrice, tradeAmount, tradeAction, activeAddress, transactionSigner, selectedBaseAsset]);
 
   // ── AI Strategy ──────────────────────────
   const runAIStrategy = useCallback(async () => {
@@ -316,7 +447,7 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
       <div className="page-container">
         <div className="page-header">
           <h1 className="page-title">MARKET TERMINAL</h1>
-          <p className="page-subtitle">Connecting to Binance...</p>
+          <p className="page-subtitle">Connecting to Tinyman V2...</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
           {[1, 2, 3, 4].map((i) => (
@@ -343,7 +474,7 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
         <div>
           <h1 className="page-title">MARKET TERMINAL</h1>
           <p className="page-subtitle">
-            Real-time Binance data &middot; Conditional Workflows &middot; On-chain Execution
+            Real-time Tinyman V2 DeFi data &middot; Conditional Workflows &middot; On-chain Execution
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -440,331 +571,259 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
 
       {/* ── Main Grid: Chart + Order Book + Right Panel ──── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '16px', marginBottom: '20px' }}>
-        {/* Left: Professional Chart + Order Book */}
-        <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-          {/* Chart Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px 0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '2px' }}>ALGO/USDT</div>
-                {algoPrice && (
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xl)', fontWeight: 700 }}>${algoPrice.price.toFixed(4)}</span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: algoPrice.changePercent24h >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
-                      {formatChange(algoPrice.changePercent24h).text}
-                    </span>
-                  </div>
-                )}
+        {/* Left: Professional Chart mimicking Tinyman (Dark Theme) */}
+        <div className="card" style={{ padding: '0', overflow: 'hidden', background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)', borderRadius: '12px', border: '1px solid var(--color-border)' }}>
+          {/* Chart Header matching Tinyman */}
+          <div style={{ padding: '24px 24px 0 24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '28px', height: '28px', background: '#000', borderRadius: '50%', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 'bold', border: '1px solid var(--color-border)' }}>{selectedBaseAsset.charAt(0)}</div>
+                <div style={{ width: '28px', height: '28px', background: '#2775ca', borderRadius: '50%', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 'bold', marginLeft: '-12px', border: '2px solid var(--color-bg-secondary)' }}>$</div>
+                <select 
+                  value={selectedBaseAsset}
+                  onChange={(e) => setSelectedBaseAsset(e.target.value)}
+                  style={{ fontSize: '18px', fontWeight: 600, margin: 0, fontFamily: 'var(--font-sans)', color: 'var(--color-text-primary)', marginLeft: '4px', background: 'transparent', border: 'none', outline: 'none', cursor: 'pointer', appearance: 'none' }}
+                >
+                  <option value="ALGO">ALGO / USDC</option>
+                  <option value="BTC">BTC / USDC</option>
+                  <option value="ETH">ETH / USDC</option>
+                  <option value="SOL">SOL / USDC</option>
+                </select>
+                <span style={{ color: 'var(--color-text-tertiary)', marginLeft: '4px', fontSize: '18px' }}>⇄</span>
               </div>
-              {/* OHLC from latest kline */}
-              {klines.length > 0 && (
-                <div style={{ display: 'flex', gap: '12px', fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-tertiary)' }}>
-                  <span>O <span style={{ color: 'var(--color-text-secondary)' }}>{klines[klines.length - 1].open.toFixed(5)}</span></span>
-                  <span>H <span style={{ color: 'var(--color-success)' }}>{klines[klines.length - 1].high.toFixed(5)}</span></span>
-                  <span>L <span style={{ color: 'var(--color-error)' }}>{klines[klines.length - 1].low.toFixed(5)}</span></span>
-                  <span>C <span style={{ color: klines[klines.length - 1].close >= klines[klines.length - 1].open ? 'var(--color-success)' : 'var(--color-error)' }}>{klines[klines.length - 1].close.toFixed(5)}</span></span>
+              <button style={{ padding: '8px 16px', background: 'var(--color-bg-tertiary)', border: 'none', borderRadius: '16px', fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)', cursor: 'pointer' }}>HIDE</button>
+            </div>
+            
+            {algoPrice && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', paddingBottom: '24px', marginBottom: '16px' }}>
+                <div>
+                  <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)', marginBottom: '8px' }}>{selectedBaseAsset} price</div>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--color-text-primary)', fontFamily: 'var(--font-mono)' }}>${algoPrice.price.toFixed(9)}</div>
                 </div>
-              )}
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)', marginBottom: '8px' }}>24h Price Change</div>
+                  <div style={{ fontSize: '14px', fontWeight: 700, color: algoPrice.changePercent24h >= 0 ? 'var(--color-success)' : 'var(--color-error)', fontFamily: 'var(--font-mono)' }}>{algoPrice.changePercent24h >= 0 ? '' : ''}{algoPrice.changePercent24h.toFixed(2)}% {algoPrice.changePercent24h >= 0 ? '↗' : '↘'}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)', marginBottom: '8px' }}>24h Volume</div>
+                  <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--color-text-primary)', fontFamily: 'var(--font-mono)' }}>${(algoPrice.volume24h).toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)', marginBottom: '8px' }}>Liquidity</div>
+                  <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--color-text-primary)', fontFamily: 'var(--font-mono)' }}>$2,109,470.23</div>
+                </div>
+              </div>
+            )}
+            
+            {/* Chart Nav & OHLC values */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                 <span style={{ fontSize: '14px', color: 'var(--color-text-secondary)', cursor: 'pointer', fontWeight: 500 }}>D</span>
+                 <span style={{ fontSize: '14px', color: 'var(--color-text-secondary)', cursor: 'pointer', fontWeight: 500 }}>Candles</span>
+                 <span style={{ fontSize: '14px', color: 'var(--color-text-secondary)', cursor: 'pointer', fontWeight: 500 }}>Indicators</span>
+              </div>
             </div>
-            {/* Interval Selector */}
-            <div style={{ display: 'flex', gap: '2px' }}>
-              {['5m', '15m', '1h', '4h', '1d'].map((iv) => (
-                <button key={iv} onClick={() => setChartInterval(iv)} style={{
-                  padding: '4px 8px', border: 'none', fontSize: '10px',
-                  fontFamily: 'var(--font-mono)', fontWeight: 700, cursor: 'pointer',
-                  background: chartInterval === iv ? 'var(--color-accent)' : 'transparent',
-                  color: chartInterval === iv ? '#fff' : 'var(--color-text-tertiary)',
-                  letterSpacing: '0.04em',
-                }}>{iv}</button>
-              ))}
-            </div>
+            
+            {/* OHLC from latest kline */}
+            {klines.length > 0 && (
+              <div style={{ display: 'flex', gap: '12px', fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-tertiary)', marginBottom: '8px' }}>
+                <span>O <span style={{ color: 'var(--color-error)' }}>{klines[klines.length - 1].open.toFixed(4)}</span></span>
+                <span>H <span style={{ color: 'var(--color-error)' }}>{klines[klines.length - 1].high.toFixed(4)}</span></span>
+                <span>L <span style={{ color: 'var(--color-error)' }}>{klines[klines.length - 1].low.toFixed(4)}</span></span>
+                <span>C <span style={{ color: klines[klines.length - 1].close >= klines[klines.length - 1].open ? 'var(--color-success)' : 'var(--color-error)' }}>{klines[klines.length - 1].close.toFixed(4)}</span></span>
+              </div>
+            )}
           </div>
 
-          {/* Main Chart Area with OHLCV */}
-          <div style={{ display: 'flex' }}>
-            {/* Chart */}
-            <div style={{ flex: 1, padding: '8px 0 0 0' }}>
-              <div style={{ width: '100%', height: 220 }}>
-                {klines.length > 0 ? (
-                  <ResponsiveContainer>
-                    <ComposedChart data={klines} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="klineGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#26a69a" stopOpacity={0.15} />
-                          <stop offset="95%" stopColor="#26a69a" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
-                      <XAxis
-                        dataKey="time"
-                        tick={{ fontSize: 9, fill: '#555', fontFamily: 'JetBrains Mono, monospace' }}
-                        axisLine={{ stroke: '#222' }}
-                        tickLine={false}
-                        interval={Math.max(Math.floor(klines.length / 6), 1)}
-                      />
-                      <YAxis
-                        domain={['auto', 'auto']}
-                        tick={{ fontSize: 10, fill: '#555', fontFamily: 'JetBrains Mono, monospace' }}
-                        axisLine={{ stroke: '#222' }}
-                        tickLine={false}
-                        width={65}
-                        tickFormatter={(v: number) => v.toFixed(4)}
-                        orientation="right"
-                      />
-                      <Tooltip
-                        contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '2px', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace', padding: '8px 12px' }}
-                        labelStyle={{ color: '#888', marginBottom: '4px' }}
-                        formatter={(value: unknown, name: any) => {
-                          const v = Number(value);
-                          if (name === 'volume') return [`${(v / 1000).toFixed(1)}K`, 'Vol'];
-                          return [`$${v.toFixed(5)}`, name.charAt(0).toUpperCase() + name.slice(1)];
-                        }}
-                      />
-                      <Area type="monotone" dataKey="close" stroke="#26a69a" strokeWidth={1.5} fill="url(#klineGrad)" dot={false} animationDuration={500} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}>
-                    Loading chart data...
-                  </div>
-                )}
-              </div>
-
-              {/* Volume Bars */}
-              {klines.length > 0 && (
-                <div style={{ width: '100%', height: 60 }}>
-                  <ResponsiveContainer>
-                    <ComposedChart data={klines} margin={{ top: 0, right: 10, left: 0, bottom: 5 }}>
-                      <XAxis dataKey="time" tick={false} axisLine={{ stroke: '#222' }} tickLine={false} />
-                      <YAxis tick={false} axisLine={false} tickLine={false} width={65} orientation="right" />
-                      <Tooltip
-                        contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '2px', fontSize: '10px', fontFamily: 'JetBrains Mono, monospace' }}
-                        formatter={(value: unknown) => [`${(Number(value) / 1000).toFixed(1)}K`, 'Volume']}
-                      />
-                      <Bar dataKey="volume" animationDuration={300}>
-                        {klines.map((entry, index) => (
-                          <Cell key={`vol-${index}`} fill={entry.close >= entry.open ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)'} />
-                        ))}
-                      </Bar>
-                    </ComposedChart>
-                  </ResponsiveContainer>
+          {/* Main Chart Area */}
+          <div style={{ padding: '0 0 16px 0', borderBottom: '1px solid var(--color-border)' }}>
+            <div style={{ width: '100%', height: 320 }}>
+              {klines.length > 0 ? (
+                <ResponsiveContainer>
+                  <ComposedChart data={klines} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-bg-tertiary)" vertical={true} />
+                    <XAxis
+                      dataKey="time"
+                      tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)', fontFamily: 'var(--font-sans)' }}
+                      axisLine={{ stroke: 'var(--color-border)' }}
+                      tickLine={false}
+                      interval={Math.max(Math.floor(klines.length / 6), 1)}
+                    />
+                    <YAxis
+                      domain={['auto', 'auto']}
+                      tick={{ fontSize: 11, fill: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={65}
+                      tickFormatter={(v: number) => v.toFixed(4)}
+                      orientation="right"
+                    />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', borderRadius: '4px', fontSize: '12px', fontFamily: 'var(--font-mono)', padding: '8px 12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.5)' }}
+                      itemStyle={{ color: '#ffffff' }}
+                      labelStyle={{ color: 'var(--color-text-tertiary)', marginBottom: '4px' }}
+                      formatter={(value: any) => [Number(value).toFixed(4), 'Price']}
+                    />
+                    <Bar dataKey="close" barSize={4}>
+                      {klines.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.close >= entry.open ? 'var(--color-success)' : 'var(--color-error)'} />
+                      ))}
+                    </Bar>
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)', fontSize: '14px' }}>
+                  Loading chart data...
                 </div>
               )}
             </div>
-
-            {/* Order Book */}
-            <div style={{ width: '150px', borderLeft: '1px solid #1a1a1a', padding: '8px', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: 'var(--color-text-tertiary)', letterSpacing: '0.06em' }}>
-                <span>Price</span><span>Size</span>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '16px 24px 0', fontSize: '12px', color: 'var(--color-text-secondary)', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <span>5y</span><span>1y</span><span>6m</span><span>3m</span><span>5d</span><span>1d</span><span style={{ fontWeight: 600 }}>📅</span>
               </div>
-              {/* Asks (sell orders) - reversed for display */}
-              {orderBook.asks.slice(0, 8).reverse().map((ask, i) => (
-                <div key={`ask-${i}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0', position: 'relative' }}>
-                  <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${Math.min((ask.size / (orderBook.asks[orderBook.asks.length-1]?.total || 1)) * 100, 100)}%`, background: 'rgba(239, 83, 80, 0.08)' }} />
-                  <span style={{ color: '#ef5350', position: 'relative', zIndex: 1 }}>{ask.price.toFixed(5)}</span>
-                  <span style={{ color: '#888', position: 'relative', zIndex: 1 }}>{ask.size.toFixed(0)}</span>
-                </div>
-              ))}
-              {/* Spread */}
-              {algoPrice && (
-                <div style={{ padding: '4px 0', borderTop: '1px solid #222', borderBottom: '1px solid #222', margin: '4px 0', textAlign: 'center', color: 'var(--color-text-secondary)', fontWeight: 700, fontSize: '11px' }}>
-                  ${algoPrice.price.toFixed(5)}
-                </div>
-              )}
-              {/* Bids (buy orders) */}
-              {orderBook.bids.slice(0, 8).map((bid, i) => (
-                <div key={`bid-${i}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0', position: 'relative' }}>
-                  <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${Math.min((bid.size / (orderBook.bids[orderBook.bids.length-1]?.total || 1)) * 100, 100)}%`, background: 'rgba(38, 166, 154, 0.08)' }} />
-                  <span style={{ color: '#26a69a', position: 'relative', zIndex: 1 }}>{bid.price.toFixed(5)}</span>
-                  <span style={{ color: '#888', position: 'relative', zIndex: 1 }}>{bid.size.toFixed(0)}</span>
-                </div>
-              ))}
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <span>15:49:52 (UTC)</span><span>%</span><span>log</span><span style={{ color: 'var(--color-accent)', fontWeight: 600 }}>auto</span>
+              </div>
             </div>
           </div>
-
-          {/* 24h Stats Bar */}
-          {algoPrice && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', padding: '12px 20px', borderTop: '1px solid #1a1a1a', background: 'rgba(0,0,0,0.2)' }}>
-              {[
-                { label: '24h High', value: `$${algoPrice.high24h.toFixed(4)}` },
-                { label: '24h Low', value: `$${algoPrice.low24h.toFixed(4)}` },
-                { label: '24h Volume', value: `${(algoPrice.volume24h / 1e6).toFixed(1)}M` },
-                { label: '24h Change', value: `$${algoPrice.change24h.toFixed(4)}`, color: algoPrice.change24h >= 0 ? '#26a69a' : '#ef5350' },
-                { label: 'Spread', value: orderBook.asks[0] && orderBook.bids[0] ? `$${(orderBook.asks[0].price - orderBook.bids[0].price).toFixed(5)}` : '—' },
-              ].map(({ label, value, color }) => (
-                <div key={label}>
-                  <div style={{ fontSize: '9px', color: '#555', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '2px' }}>{label}</div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: color ?? 'var(--color-text-primary)' }}>{value}</div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
-        {/* Right Panel: Toggle between Agent/Trade */}
+        {/* Right Panel: Tinyman Style Swap Card (Dark Theme) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {/* Panel Switcher */}
-          <div style={{ display: 'flex', gap: '0' }}>
-            <button onClick={() => setRightPanel('agent')} style={{ flex: 1, padding: '8px', border: 'none', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '0.08em', cursor: 'pointer', background: rightPanel === 'agent' ? 'var(--color-accent)' : 'var(--color-bg-tertiary)', color: rightPanel === 'agent' ? '#fff' : 'var(--color-text-secondary)' }}>
-              WORKFLOW AGENT
-            </button>
-            <button onClick={() => setRightPanel('trade')} style={{ flex: 1, padding: '8px', border: 'none', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '0.08em', cursor: 'pointer', background: rightPanel === 'trade' ? 'var(--color-accent)' : 'var(--color-bg-tertiary)', color: rightPanel === 'trade' ? '#fff' : 'var(--color-text-secondary)' }}>
-              PAPER TRADE
-            </button>
+          <div className="card" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)', padding: '24px', borderRadius: '12px', border: '1px solid var(--color-border)' }}>
+            <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)', marginBottom: '16px', fontWeight: 500 }}>
+              TRENDING #1 RIO <span style={{ color: 'var(--color-success)' }}>14.88% ↗</span> #2 native <span style={{ color: 'var(--color-success)' }}>10.97% ↗</span>
+            </div>
+          
+            <div style={{ display: 'flex', gap: '24px', borderBottom: '1px solid var(--color-border)', marginBottom: '24px', paddingBottom: '12px' }}>
+               <button onClick={() => setRightPanel('trade')} style={{ background: 'none', border: 'none', fontSize: '16px', fontWeight: rightPanel === 'trade' ? 700 : 500, color: rightPanel === 'trade' ? 'var(--color-text-primary)' : 'var(--color-text-muted)', borderBottom: rightPanel === 'trade' ? '2px solid var(--color-text-primary)' : 'none', paddingBottom: '12px', marginBottom: '-13px', cursor: 'pointer' }}>Swap</button>
+               <button onClick={() => setRightPanel('agent')} style={{ background: 'none', border: 'none', fontSize: '16px', fontWeight: rightPanel === 'agent' ? 700 : 500, color: rightPanel === 'agent' ? 'var(--color-text-primary)' : 'var(--color-text-muted)', borderBottom: rightPanel === 'agent' ? '2px solid var(--color-text-primary)' : 'none', paddingBottom: '12px', marginBottom: '-13px', cursor: 'pointer' }}>Trigger AI</button>
+               <button onClick={() => setRightPanel('recurring')} style={{ background: 'none', border: 'none', fontSize: '16px', fontWeight: rightPanel === 'recurring' ? 700 : 500, color: rightPanel === 'recurring' ? 'var(--color-text-primary)' : 'var(--color-text-muted)', borderBottom: rightPanel === 'recurring' ? '2px solid var(--color-text-primary)' : 'none', paddingBottom: '12px', marginBottom: '-13px', cursor: 'pointer' }}>Recurring ⓘ</button>
+            </div>
+            
+            {rightPanel === 'trade' ? (
+              <>
+                <div style={{ marginBottom: '8px', fontSize: '14px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>You Pay</div>
+                <div style={{ background: 'var(--color-bg-tertiary)', borderRadius: '12px', border: '1px solid var(--color-border)', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                   {tradeAction === 'SELL' ? (
+                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                       <div style={{ width: '28px', height: '28px', background: '#000', borderRadius: '50%', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 'bold' }}>{selectedBaseAsset.charAt(0)}</div>
+                       <div>
+                         <div style={{ fontWeight: 600, fontSize: '16px', color: 'var(--color-text-primary)' }}>{selectedBaseAsset === 'ALGO' ? 'Algorand' : selectedBaseAsset} <span style={{ color: 'var(--color-success)' }}>✓</span></div>
+                         <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)' }}>${selectedBaseAsset}</div>
+                       </div>
+                     </div>
+                   ) : (
+                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                       <div style={{ width: '28px', height: '28px', background: '#2775ca', borderRadius: '50%', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 'bold' }}>$</div>
+                       <div>
+                         <div style={{ fontWeight: 600, fontSize: '16px', color: 'var(--color-text-primary)' }}>USDC <span style={{ color: '#3b82f6' }}>✓</span></div>
+                         <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)' }}>$USDC - 31566704</div>
+                       </div>
+                     </div>
+                   )}
+                   <input type="number" value={tradeAmount} onChange={(e) => setTradeAmount(e.target.value)} style={{ textAlign: 'right', fontSize: '24px', border: 'none', background: 'none', width: '50%', color: 'var(--color-text-primary)', outline: 'none' }} placeholder="0.00" />
+                </div>
+                
+                <div style={{ display: 'flex', justifyContent: 'center', margin: '16px 0', color: 'var(--color-text-muted)', fontSize: '20px', cursor: 'pointer' }} onClick={() => setTradeAction(tradeAction === 'BUY' ? 'SELL' : 'BUY')}>
+                  ⇅
+                </div>
+                
+                <div style={{ marginBottom: '8px', fontSize: '14px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>You Receive</div>
+                <div style={{ background: 'var(--color-bg-tertiary)', borderRadius: '12px', border: '1px solid var(--color-border)', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                   {tradeAction === 'BUY' ? (
+                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                       <div style={{ width: '28px', height: '28px', background: '#000', borderRadius: '50%', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 'bold' }}>{selectedBaseAsset.charAt(0)}</div>
+                       <div>
+                         <div style={{ fontWeight: 600, fontSize: '16px', color: 'var(--color-text-primary)' }}>{selectedBaseAsset === 'ALGO' ? 'Algorand' : selectedBaseAsset} <span style={{ color: 'var(--color-success)' }}>✓</span></div>
+                         <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)' }}>${selectedBaseAsset}</div>
+                       </div>
+                     </div>
+                   ) : (
+                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                       <div style={{ width: '28px', height: '28px', background: '#2775ca', borderRadius: '50%', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 'bold' }}>$</div>
+                       <div>
+                         <div style={{ fontWeight: 600, fontSize: '16px', color: 'var(--color-text-primary)' }}>USDC <span style={{ color: '#3b82f6' }}>✓</span></div>
+                         <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)' }}>$USDC - 31566704</div>
+                       </div>
+                     </div>
+                   )}
+                   <input type="number" disabled value={algoPrice ? (parseFloat(tradeAmount || '0') * (tradeAction === 'BUY' ? (1/algoPrice.price) : algoPrice.price)).toFixed(2) : '0.00'} style={{ textAlign: 'right', fontSize: '24px', border: 'none', background: 'none', width: '50%', color: 'var(--color-text-primary)', outline: 'none' }} placeholder="0.00" />
+                </div>
+                
+                <button onClick={handleTrade} style={{ width: '100%', background: '#e0ff4f', color: '#000', padding: '16px', borderRadius: '8px', border: 'none', fontWeight: 700, fontSize: '14px', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  {activeAddress ? 'SWAP' : 'CONNECT TO A WALLET'}
+                </button>
+              </>
+            ) : rightPanel === 'agent' ? (
+              <>
+                <div style={{ marginBottom: '8px', fontSize: '14px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>When Price Reaches</div>
+                <div style={{ background: 'var(--color-bg-tertiary)', borderRadius: '12px', border: '1px solid var(--color-border)', padding: '16px', display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
+                   <select value={condOperator} onChange={(e) => setCondOperator(e.target.value as ConditionOperator)} style={{ padding: '8px', border: '1px solid var(--color-border)', borderRadius: '6px', fontSize: '14px', background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)', outline: 'none' }}>
+                     <option value="lt">&lt; Less Than</option>
+                     <option value="gt">&gt; Greater Than</option>
+                   </select>
+                   <input type="number" value={condPrice} onChange={(e) => setCondPrice(e.target.value)} style={{ flex: 1, fontSize: '20px', border: 'none', background: 'none', color: 'var(--color-text-primary)', outline: 'none' }} placeholder="$0.00" />
+                </div>
+                
+                <div style={{ marginBottom: '8px', fontSize: '14px', fontWeight: 500, color: 'var(--color-text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Then Execute</span>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', color: autoExecuteAgent ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
+                    <input type="checkbox" checked={autoExecuteAgent} onChange={(e) => setAutoExecuteAgent(e.target.checked)} style={{ accentColor: 'var(--color-success)' }} />
+                    Auto-Sign Agent ⚡
+                  </label>
+                </div>
+                <div style={{ background: 'var(--color-bg-tertiary)', borderRadius: '12px', border: '1px solid var(--color-border)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
+                   <select value={condAction} onChange={(e) => setCondAction(e.target.value as ConditionAction)} style={{ padding: '8px', border: '1px solid var(--color-border)', borderRadius: '6px', fontSize: '14px', background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)', outline: 'none', width: '100%' }}>
+                     <option value="buy_algo">Swap {selectedBaseAsset}</option>
+                     <option value="send_payment">Send Payment</option>
+                   </select>
+                   <input type="number" value={condAmount} onChange={(e) => setCondAmount(e.target.value)} style={{ fontSize: '20px', border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-bg-secondary)', padding: '8px', color: 'var(--color-text-primary)', outline: 'none', width: '100%' }} placeholder="Amount" />
+                   {(condAction === 'send_payment') && (
+                     <input type="text" value={condReceiver} onChange={(e) => setCondReceiver(e.target.value)} style={{ fontSize: '14px', border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-bg-secondary)', padding: '8px', color: 'var(--color-text-primary)', outline: 'none', width: '100%' }} placeholder="Receiver Address" />
+                   )}
+                </div>
+
+                <button onClick={handleCreateCondition} style={{ width: '100%', background: '#e0ff4f', color: '#000', padding: '16px', borderRadius: '8px', border: 'none', fontWeight: 700, fontSize: '14px', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  CREATE TRIGGER
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Recurring View */}
+                <div style={{ marginBottom: '8px', fontSize: '14px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>Swap Frequency</div>
+                <div style={{ background: 'var(--color-bg-tertiary)', borderRadius: '12px', border: '1px solid var(--color-border)', padding: '16px', display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
+                   <select style={{ padding: '8px', border: '1px solid var(--color-border)', borderRadius: '6px', fontSize: '14px', background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)', outline: 'none', flex: 1 }}>
+                     <option>Every Day</option>
+                     <option>Every Week</option>
+                     <option>Every Month</option>
+                   </select>
+                </div>
+                
+                <div style={{ marginBottom: '8px', fontSize: '14px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>Action</div>
+                <div style={{ background: 'var(--color-bg-tertiary)', borderRadius: '12px', border: '1px solid var(--color-border)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
+                   <div style={{ fontSize: '14px', color: 'var(--color-text-primary)' }}>Buy {selectedBaseAsset} with USDC</div>
+                   <input type="number" defaultValue="10" style={{ fontSize: '20px', border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-bg-secondary)', padding: '8px', color: 'var(--color-text-primary)', outline: 'none', width: '100%' }} placeholder="Amount of USDC" />
+                </div>
+
+                <button onClick={() => { setTradeNotif('Recurring schedule created'); setTimeout(() => setTradeNotif(''), 3000); }} style={{ width: '100%', background: '#e0ff4f', color: '#000', padding: '16px', borderRadius: '8px', border: 'none', fontWeight: 700, fontSize: '14px', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  CREATE RECURRING
+                </button>
+              </>
+            )}
           </div>
-
-          {rightPanel === 'agent' ? (
-            <>
-              {/* Agent Status */}
-              <div className="card" style={{ padding: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: agentStatusColor, display: 'inline-block', animation: agent.status === 'monitoring' ? 'pulse 2s infinite' : 'none' }} />
-                  <span style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', fontWeight: 700, color: agentStatusColor, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                    Agent: {agent.status === 'condition_met' ? 'Action Required' : agent.status === 'monitoring' ? 'Monitoring' : 'Standby'}
-                  </span>
-                </div>
-                <div style={{ fontSize: '10px', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)', lineHeight: 1.5, marginBottom: '8px' }}>
-                  {agent.message}
-                </div>
-                <div style={{ display: 'flex', gap: '16px', fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-tertiary)' }}>
-                  <span>Active: {agent.activeConditions}</span>
-                  <span>Triggered: {agent.metConditions}</span>
-                  {agent.lastCheck && <span>Last: {agent.lastCheck}</span>}
-                </div>
-              </div>
-
-              {/* Condition Builder */}
-              <div className="card" style={{ padding: '16px' }}>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '12px' }}>
-                  Create Condition
-                </div>
-
-                {/* Action Select */}
-                <div style={{ marginBottom: '8px' }}>
-                  <label style={{ display: 'block', fontSize: '10px', color: 'var(--color-text-tertiary)', marginBottom: '4px', letterSpacing: '0.06em' }}>ACTION</label>
-                  <select className="input" value={condAction} onChange={(e) => setCondAction(e.target.value as ConditionAction)} style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
-                    <option value="send_payment">Send Payment</option>
-                    <option value="sell_algo">Sell ALGO</option>
-                    <option value="buy_algo">Buy ALGO</option>
-                    <option value="app_call">Execute Workflow</option>
-                  </select>
-                </div>
-
-                {/* Condition Row */}
-                <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
-                  <div style={{ flex: '0 0 auto' }}>
-                    <label style={{ display: 'block', fontSize: '10px', color: 'var(--color-text-tertiary)', marginBottom: '4px' }}>WHEN</label>
-                    <select className="input" value={condOperator} onChange={(e) => setCondOperator(e.target.value as ConditionOperator)} style={{ width: '60px', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
-                      <option value="lt">&lt;</option>
-                      <option value="gt">&gt;</option>
-                    </select>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', fontSize: '10px', color: 'var(--color-text-tertiary)', marginBottom: '4px' }}>PRICE (USD)</label>
-                    <input type="number" className="input" value={condPrice} onChange={(e) => setCondPrice(e.target.value)} min="0" step="0.01" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', fontSize: '10px', color: 'var(--color-text-tertiary)', marginBottom: '4px' }}>AMOUNT</label>
-                    <input type="number" className="input" value={condAmount} onChange={(e) => setCondAmount(e.target.value)} min="0" step="1" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }} />
-                  </div>
-                </div>
-
-                {/* Receiver (optional) */}
-                {(condAction === 'send_payment') && (
-                  <div style={{ marginBottom: '8px' }}>
-                    <label style={{ display: 'block', fontSize: '10px', color: 'var(--color-text-tertiary)', marginBottom: '4px' }}>RECEIVER ADDRESS</label>
-                    <input type="text" className="input" value={condReceiver} onChange={(e) => setCondReceiver(e.target.value)} placeholder="ALGO address (optional)" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: '10px' }} />
-                  </div>
-                )}
-
-                {/* Preview */}
-                {algoPrice && (
-                  <div style={{ padding: '8px', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', marginBottom: '10px', fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
-                    <div>Current: ${algoPrice.price.toFixed(4)}</div>
-                    <div>Trigger: ALGO {condOperator === 'lt' ? '<' : '>'} ${parseFloat(condPrice || '0').toFixed(4)}</div>
-                    <div>Value: ~${(parseFloat(condAmount || '0') * algoPrice.price).toFixed(2)} USD</div>
-                    <div style={{ color: (condOperator === 'lt' && algoPrice.price < parseFloat(condPrice || '0')) || (condOperator === 'gt' && algoPrice.price > parseFloat(condPrice || '0')) ? 'var(--color-warning)' : 'var(--color-text-muted)', marginTop: '4px', fontWeight: 700 }}>
-                      Status: {(condOperator === 'lt' && algoPrice.price < parseFloat(condPrice || '0')) || (condOperator === 'gt' && algoPrice.price > parseFloat(condPrice || '0')) ? 'WOULD TRIGGER NOW' : 'Not met yet'}
-                    </div>
-                  </div>
-                )}
-
-                <button className="btn btn-primary" onClick={handleCreateCondition} style={{ width: '100%', fontWeight: 700 }}>
-                  Create Condition
-                </button>
-              </div>
-
-              {/* AI Agent (compact) */}
-              <div className="card" style={{ padding: '16px' }}>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '8px' }}>AI Strategy</div>
-                <input type="password" className="input" value={groqKey} onChange={(e) => setGroqKey(e.target.value)} placeholder="Groq API Key" style={{ width: '100%', marginBottom: '6px', fontFamily: 'var(--font-mono)', fontSize: '10px' }} />
-                <button className="btn btn-primary btn-sm" onClick={runAIStrategy} disabled={aiLoading || !groqKey} style={{ width: '100%', marginBottom: '6px' }}>
-                  {aiLoading ? 'Analyzing...' : 'Run AI Strategy'}
-                </button>
-                {aiMessage && <div style={{ fontSize: '10px', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)', lineHeight: 1.4 }}>{aiMessage}</div>}
-              </div>
-            </>
-          ) : (
-            <>
-              {/* Portfolio */}
-              <div className="card" style={{ padding: '20px' }}>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '12px' }}>Portfolio</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-2xl)', fontWeight: 700, marginBottom: '4px' }}>${portfolio.totalValue.toFixed(2)}</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', color: pnlColor, marginBottom: '16px' }}>{pnlSign}${portfolio.pnl.toFixed(2)} ({pnlSign}{portfolio.pnlPercent.toFixed(2)}%)</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {[
-                    { label: 'Cash', value: `$${portfolio.cash.toFixed(2)}` },
-                    { label: 'ALGO Holdings', value: portfolio.algo.toFixed(2) },
-                    { label: 'ALGO Value', value: `$${(portfolio.algo * (algoPrice?.price ?? 0)).toFixed(2)}` },
-                  ].map(({ label, value }) => (
-                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}>{value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Trade Panel */}
-              <div className="card" style={{ padding: '20px' }}>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '12px' }}>Place Trade</div>
-                <div style={{ display: 'flex', gap: '0', marginBottom: '12px' }}>
-                  <button onClick={() => setTradeAction('BUY')} style={{ flex: 1, padding: '8px', border: 'none', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '0.1em', cursor: 'pointer', background: tradeAction === 'BUY' ? 'var(--color-success)' : 'var(--color-bg-tertiary)', color: tradeAction === 'BUY' ? '#000' : 'var(--color-text-secondary)' }}>BUY</button>
-                  <button onClick={() => setTradeAction('SELL')} style={{ flex: 1, padding: '8px', border: 'none', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '0.1em', cursor: 'pointer', background: tradeAction === 'SELL' ? 'var(--color-error)' : 'var(--color-bg-tertiary)', color: tradeAction === 'SELL' ? '#fff' : 'var(--color-text-secondary)' }}>SELL</button>
-                </div>
-                <div style={{ marginBottom: '8px' }}>
-                  <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginBottom: '4px' }}>{tradeAction === 'BUY' ? 'AMOUNT (USD)' : 'AMOUNT (ALGO)'}</label>
-                  <input type="number" className="input" value={tradeAmount} onChange={(e) => setTradeAmount(e.target.value)} min="0" step="10" style={{ width: '100%', fontFamily: 'var(--font-mono)' }} />
-                </div>
-                {algoPrice && (
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', marginBottom: '12px' }}>
-                    {tradeAction === 'BUY' ? `Est: ${(parseFloat(tradeAmount || '0') / algoPrice.price).toFixed(2)} ALGO` : `Est: $${(parseFloat(tradeAmount || '0') * algoPrice.price).toFixed(2)}`}
-                  </div>
-                )}
-                <button className="btn btn-primary" onClick={handleTrade} style={{ width: '100%', background: tradeAction === 'BUY' ? 'var(--color-success)' : 'var(--color-error)', color: tradeAction === 'BUY' ? '#000' : '#fff', border: 'none', fontWeight: 700 }}>
-                  {tradeAction === 'BUY' ? 'Buy ALGO' : 'Sell ALGO'}
-                </button>
-                <button className="btn btn-ghost btn-sm" onClick={handleReset} style={{ width: '100%', marginTop: '8px', fontSize: 'var(--text-xs)' }}>Reset All</button>
-              </div>
-            </>
-          )}
         </div>
       </div>
 
       {/* ── Bottom Tabs ─────────────────────── */}
       <div className="card" style={{ padding: '20px' }}>
-        <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--color-border)', marginBottom: '16px' }}>
-          {(['conditions', 'trades', 'payments', 'ai'] as BottomTab[]).map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} style={{
-              padding: '8px 20px', border: 'none',
-              borderBottom: activeTab === tab ? '2px solid var(--color-accent)' : '2px solid transparent',
-              background: 'none', color: activeTab === tab ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
-              fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: activeTab === tab ? 700 : 400,
-              letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer',
-            }}>
-              {tab === 'conditions' ? `Conditions (${conditionsList.filter(c => c.status === 'monitoring' || c.status === 'met').length})` : tab === 'trades' ? 'Trade History' : tab === 'payments' ? 'Payments' : 'AI Log'}
-            </button>
-          ))}
+        <div style={{ display: 'flex', gap: '24px', borderBottom: '1px solid var(--color-border)', marginBottom: '16px' }}>
+           <button className={`btn btn-ghost ${activeTab === 'conditions' ? 'btn-primary' : ''}`} onClick={() => setActiveTab('conditions')} style={{ borderRadius: 0, borderBottom: activeTab === 'conditions' ? '2px solid var(--color-text-primary)' : 'none', padding: '12px 0' }}>Conditions ({conditionsList.length})</button>
+           <button className={`btn btn-ghost ${activeTab === 'trades' ? 'btn-primary' : ''}`} onClick={() => setActiveTab('trades')} style={{ borderRadius: 0, borderBottom: activeTab === 'trades' ? '2px solid var(--color-text-primary)' : 'none', padding: '12px 0' }}>Trade History</button>
+           <button className={`btn btn-ghost ${activeTab === 'payments' ? 'btn-primary' : ''}`} onClick={() => setActiveTab('payments')} style={{ borderRadius: 0, borderBottom: activeTab === 'payments' ? '2px solid var(--color-text-primary)' : 'none', padding: '12px 0' }}>Payments</button>
+           <button className={`btn btn-ghost ${activeTab === 'ai' ? 'btn-primary' : ''}`} onClick={() => setActiveTab('ai')} style={{ borderRadius: 0, borderBottom: activeTab === 'ai' ? '2px solid var(--color-text-primary)' : 'none', padding: '12px 0' }}>AI Log</button>
+           <button className={`btn btn-ghost ${activeTab === 'explorer' ? 'btn-primary' : ''}`} onClick={() => setActiveTab('explorer')} style={{ borderRadius: 0, borderBottom: activeTab === 'explorer' ? '2px solid var(--color-success)' : 'none', padding: '12px 0', color: activeTab === 'explorer' ? 'var(--color-success)' : 'inherit' }}>Transactions</button>
         </div>
 
         {/* Conditions Tab */}
@@ -882,15 +941,47 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', fontWeight: 700, color: aiDecision?.action === 'buy' ? 'var(--color-success)' : aiDecision?.action === 'sell' ? 'var(--color-error)' : 'var(--color-text-secondary)' }}>{aiDecision?.action?.toUpperCase() ?? 'NONE'}</div>
               </div>
               <div>
-                <div style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', letterSpacing: '0.06em', marginBottom: '4px', textTransform: 'uppercase' }}>AI Trades</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', fontWeight: 700 }}>{portfolio.trades.filter(t => t.source === 'ai').length}</div>
+                <div style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', letterSpacing: '0.06em', marginBottom: '4px', textTransform: 'uppercase' }}>Memory</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--color-text-primary)' }}>{portfolio.trades.length} interaction logs</div>
               </div>
             </div>
-            {aiDecision && (
-              <div style={{ padding: '12px', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
-                <div style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Latest Reasoning</div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', lineHeight: 1.6, fontFamily: 'var(--font-mono)' }}>{aiDecision.reason}</div>
+            
+            <div style={{ background: 'var(--color-bg-secondary)', padding: '16px', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+              <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px', fontWeight: 500 }}>LATEST AGENT OUTPUT</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: aiMessage ? 'var(--color-success)' : 'var(--color-text-tertiary)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                 {aiMessage || "Waiting for next cycle..."}
+                 {aiLoading && " \n\nThinking..."}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Transactions / Lora Explorer Tab */}
+        {activeTab === 'explorer' && (
+          <div style={{ overflowX: 'auto' }}>
+            {payments.length === 0 && portfolio.trades.length === 0 ? (
+              <div style={{ padding: '30px', textAlign: 'center', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}>No on-chain transactions yet.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                <thead><tr>{['Type', 'Full TxID (Lora Copy)', 'Time'].map((h) => (<th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: '10px', color: 'var(--color-text-tertiary)', letterSpacing: '0.1em', textTransform: 'uppercase', borderBottom: '1px solid var(--color-border)', fontWeight: 500 }}>{h}</th>))}</tr></thead>
+                <tbody>
+                  {[...portfolio.trades.filter(t => t.id.startsWith('tx_') || t.id.length > 20).map(t => ({ id: t.id, type: `SWAP (${t.action})`, time: t.time })), ...payments.map(p => ({ id: p.txId, type: 'PAYMENT', time: p.time }))]
+                    .sort((a, b) => new Date(`1970/01/01 ${b.time}`).getTime() - new Date(`1970/01/01 ${a.time}`).getTime())
+                    .slice(0, 30)
+                    .map((tx, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                      <td style={{ padding: '12px', width: '20%' }}><span style={{ fontSize: '10px', color: tx.type === 'PAYMENT' ? 'var(--color-accent)' : 'var(--color-success)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{tx.type}</span></td>
+                      <td style={{ padding: '12px', width: '60%', wordBreak: 'break-all', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--color-text-primary)' }}>
+                        {tx.id}
+                        {tx.id.length > 30 && (
+                          <a href={`https://lora.algonode.network/testnet/transaction/${tx.id}`} target="_blank" rel="noreferrer" style={{ marginLeft: '12px', color: 'var(--color-success)', textDecoration: 'none', fontWeight: 'bold' }}>View ↗</a>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px', width: '20%', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>{tx.time}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         )}
@@ -898,7 +989,7 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
 
       {/* ── Footer ──────────────────────────── */}
       <div style={{ marginTop: '20px', padding: '12px 16px', textAlign: 'center', fontSize: '10px', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', borderTop: '1px solid var(--color-border)' }}>
-        SIMULATION MODE — Market data is real-time from Binance. Paper trades are simulated. On-chain execution requires wallet approval.
+        SIMULATION MODE — Market data is real-time from Tinyman V2. Paper trades are simulated. On-chain execution requires wallet approval.
       </div>
     </div>
   );
