@@ -1,5 +1,10 @@
 {
   // Disabled due to matangover.mypy extension not supporting monorepos
   // To be addressed as part of https://github.com/matangover/mypy-vscode/issues/82
-  "mypy.enabled": false
+  "mypy.enabled": false,
+  "python.defaultInterpreterPath": "${workspaceFolder}/projects/microflux-contracts/.venv/bin/python",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/projects/microflux-contracts/.venv/lib/python3.11/site-packages",
+    "${workspaceFolder}/projects/microflux-contracts/.venv/lib/python3.10/site-packages"
+  ]
 }

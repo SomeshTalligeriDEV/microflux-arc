@@ -117,6 +117,12 @@ export const executeWorkflow = async (
       continue;
     }
 
+    if (nodeType === 'tinyman_swap') {
+      // Tinyman swaps execute client-side via wallet signing; skip on server.
+      steps.push(`[SKIP] tinyman_swap requires client-side wallet signing`);
+      continue;
+    }
+
     steps.push(`[SKIP] Unsupported node type: ${nodeType}`);
   }
 

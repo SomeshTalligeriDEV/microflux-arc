@@ -186,6 +186,16 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     color: CATEGORY_COLORS.defi,
     defaultConfig: { token: 'ALGO', interval: 30000 },
   },
+  {
+    type: 'tinyman_swap',
+    label: 'Swap (Tinyman - Beta)',
+    description: 'DEX swap via Tinyman V2',
+    category: 'defi',
+    icon: '⇄',
+    isReal: true,
+    color: CATEGORY_COLORS.defi,
+    defaultConfig: { fromAssetId: 0, toAssetId: 31566704, amount: 1000000, slippage: 1 },
+  },
 
   // ── NOTIFICATIONS ───────────────────────────
   {

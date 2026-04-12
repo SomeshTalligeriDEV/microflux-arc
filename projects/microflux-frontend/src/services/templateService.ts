@@ -307,6 +307,56 @@ export const TEMPLATES: WorkflowTemplate[] = [
     ],
   },
 
+  {
+    id: 'tpl_tinyman_swap',
+    name: 'DeFi Swap (Tinyman)',
+    description: 'Swap ALGO for USDC on Tinyman V2 DEX with price check and confirmation notification. Real on-chain transactions.',
+    category: 'trading',
+    tags: ['defi', 'swap', 'tinyman', 'dex', 'real', 'usdc'],
+    difficulty: 'intermediate',
+    estimatedGas: '0.004 ALGO',
+    author: 'MICROFLUX-X1',
+    nodes: [
+      {
+        id: 'n1',
+        type: 'wallet_event',
+        label: 'Trigger: Manual',
+        category: 'trigger',
+        config: { event: 'manual_trigger' },
+        position: { x: 80, y: 200 },
+      },
+      {
+        id: 'n2',
+        type: 'price_feed',
+        label: 'Check ALGO Price',
+        category: 'defi',
+        config: { token: 'ALGO', vs: 'USD' },
+        position: { x: 350, y: 200 },
+      },
+      {
+        id: 'n3',
+        type: 'tinyman_swap',
+        label: 'Swap ALGO → USDC',
+        category: 'defi',
+        config: { fromAssetId: 0, toAssetId: 31566704, amount: 1000000, slippage: 1 },
+        position: { x: 620, y: 200 },
+      },
+      {
+        id: 'n4',
+        type: 'browser_notification',
+        label: 'Swap Complete',
+        category: 'notification',
+        config: { title: 'Tinyman Swap', body: 'ALGO → USDC swap executed on-chain' },
+        position: { x: 890, y: 200 },
+      },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      { id: 'e2', source: 'n2', target: 'n3' },
+      { id: 'e3', source: 'n3', target: 'n4' },
+    ],
+  },
+
   // ── AUTOMATION ──────────────────────────────
   {
     id: 'tpl_scheduled_payment',
