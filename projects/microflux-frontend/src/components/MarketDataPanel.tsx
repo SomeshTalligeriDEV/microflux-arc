@@ -12,6 +12,7 @@ import {
 import {
   getPortfolio, updatePortfolioValue, executeBuy, executeSell,
   getPaymentLogs, resetPortfolio, getAIStrategy, executeAIDecision,
+  logRealTrade, logRealPayment,
   type Portfolio, type AIDecision, type PaymentLog,
 } from '../services/paperTradingService';
 import {
@@ -31,7 +32,7 @@ interface MarketDataPanelProps {
 }
 
 // ── Sub-tab type ─────────────────────────────
-type BottomTab = 'trades' | 'conditions' | 'payments' | 'ai';
+type BottomTab = 'trades' | 'conditions' | 'payments' | 'ai' | 'explorer';
 
 // ── Main Component ───────────────────────────
 const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
@@ -60,6 +61,9 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
   const [aiMessage, setAiMessage] = useState('');
   const [groqKey, setGroqKey] = useState('');
   const [autoMode, setAutoMode] = useState(false);
+  const [autoExecuteAgent, setAutoExecuteAgent] = useState(false);
+  const autoExecRef = useRef(false);
+  useEffect(() => { autoExecRef.current = autoExecuteAgent; }, [autoExecuteAgent]);
 
   // Condition Agent State
   const [condOperator, setCondOperator] = useState<ConditionOperator>('lt');
@@ -83,6 +87,9 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
   const [tradeNotif, setTradeNotif] = useState('');
   const [rightPanel, setRightPanel] = useState<'trade' | 'agent' | 'recurring'>('trade');
   const autoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  // ── Avoid Stale Closures ──
+  const handleExecuteConditionRef = useRef<((cond: MarketCondition) => Promise<void>) | null>(null);
 
   // ── Fetch Prices & Evaluate Conditions ───
   const fetchPrices = useCallback(async () => {
@@ -113,6 +120,19 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
       if (newlyMet.length > 0) {
         setTradeNotif(`Condition triggered: ${formatCondition(newlyMet[0])}`);
         setTimeout(() => setTradeNotif(''), 5000);
+        
+        // Auto-Execute AI Agent bypasses manual approval click
+        if (autoExecRef.current) {
+          setTimeout(() => {
+            newlyMet.forEach(cond => {
+              if (executingId !== cond.id) {
+                if (handleExecuteConditionRef.current) {
+                  handleExecuteConditionRef.current(cond);
+                }
+              }
+            });
+          }, 1000);
+        }
       }
       setConditionsList(getConditions());
       setAgent(getAgentState());
@@ -183,12 +203,20 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
     setAgent(getAgentState());
     setTradeNotif(`Condition created: ${condAction === 'send_payment' ? 'Send' : condAction === 'buy_algo' ? 'Swap' : 'Execute'} ${amount} ${selectedBaseAsset} when price ${condOperator === 'lt' ? '<' : '>'} $${price.toFixed(4)}`);
     setTimeout(() => setTradeNotif(''), 3000);
-  }, [condOperator, condPrice, condAction, condAmount, condReceiver]);
+  }, [condOperator, condPrice, condAction, condAmount, condReceiver, selectedBaseAsset]);
 
   // ── Execute On-Chain ─────────────────────
   const handleExecuteCondition = useCallback(async (cond: MarketCondition) => {
-    if (!activeAddress || !transactionSigner || !algoPrice) {
+    if (!activeAddress) {
       setExecMessage('Connect your wallet to execute on-chain.');
+      return;
+    }
+    if (!transactionSigner) {
+      setExecMessage('Wallet connected, but transaction signer is unavailable. Please try reconnecting.');
+      return;
+    }
+    if (!algoPrice) {
+      setExecMessage('Waiting for live price data. Please wait a moment...');
       return;
     }
 
@@ -239,8 +267,10 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
       await algosdk.waitForConfirmation(algod, txId, 4);
 
       markExecuted(cond.id, txId);
+      logRealPayment(txId, '0.001 ALGO');
       setConditionsList(getConditions());
       setAgent(getAgentState());
+      setPayments(getPaymentLogs());
       setExecMessage(`Confirmed on-chain: ${txId.substring(0, 16)}...`);
       setTradeNotif(`Transaction confirmed: ${txId.substring(0, 20)}...`);
       setTimeout(() => { setTradeNotif(''); setExecMessage(''); }, 5000);
@@ -254,6 +284,10 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
       setExecutingId(null);
     }
   }, [activeAddress, transactionSigner, algoPrice]);
+
+  useEffect(() => {
+    handleExecuteConditionRef.current = handleExecuteCondition;
+  }, [handleExecuteCondition]);
 
   // ── Smart Trade Routing ───────────────────
   const handleTrade = useCallback(async () => {
@@ -333,6 +367,15 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
         );
 
         if (result.success && result.txId) {
+          logRealTrade(
+            tradeAction,
+            fromAssetId === 0 ? 'ALGO' : 'USDC',
+            algoPrice.price,
+            tradeAction === 'BUY' ? (amount / algoPrice.price) : amount,
+            tradeAction === 'BUY' ? amount : (amount * algoPrice.price),
+            result.txId
+          );
+          setPortfolio(getPortfolio());
           setTradeNotif(`Swap Confirmed: ${result.txId.substring(0, 10)}...`);
         } else {
           setTradeNotif(`Swap Failed: ${result.error}`);
@@ -655,7 +698,7 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
           
             <div style={{ display: 'flex', gap: '24px', borderBottom: '1px solid var(--color-border)', marginBottom: '24px', paddingBottom: '12px' }}>
                <button onClick={() => setRightPanel('trade')} style={{ background: 'none', border: 'none', fontSize: '16px', fontWeight: rightPanel === 'trade' ? 700 : 500, color: rightPanel === 'trade' ? 'var(--color-text-primary)' : 'var(--color-text-muted)', borderBottom: rightPanel === 'trade' ? '2px solid var(--color-text-primary)' : 'none', paddingBottom: '12px', marginBottom: '-13px', cursor: 'pointer' }}>Swap</button>
-               <button onClick={() => setRightPanel('agent')} style={{ background: 'none', border: 'none', fontSize: '16px', fontWeight: rightPanel === 'agent' ? 700 : 500, color: rightPanel === 'agent' ? 'var(--color-text-primary)' : 'var(--color-text-muted)', borderBottom: rightPanel === 'agent' ? '2px solid var(--color-text-primary)' : 'none', paddingBottom: '12px', marginBottom: '-13px', cursor: 'pointer' }}>Trigger ⓘ</button>
+               <button onClick={() => setRightPanel('agent')} style={{ background: 'none', border: 'none', fontSize: '16px', fontWeight: rightPanel === 'agent' ? 700 : 500, color: rightPanel === 'agent' ? 'var(--color-text-primary)' : 'var(--color-text-muted)', borderBottom: rightPanel === 'agent' ? '2px solid var(--color-text-primary)' : 'none', paddingBottom: '12px', marginBottom: '-13px', cursor: 'pointer' }}>Trigger AI</button>
                <button onClick={() => setRightPanel('recurring')} style={{ background: 'none', border: 'none', fontSize: '16px', fontWeight: rightPanel === 'recurring' ? 700 : 500, color: rightPanel === 'recurring' ? 'var(--color-text-primary)' : 'var(--color-text-muted)', borderBottom: rightPanel === 'recurring' ? '2px solid var(--color-text-primary)' : 'none', paddingBottom: '12px', marginBottom: '-13px', cursor: 'pointer' }}>Recurring ⓘ</button>
             </div>
             
@@ -724,7 +767,13 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
                    <input type="number" value={condPrice} onChange={(e) => setCondPrice(e.target.value)} style={{ flex: 1, fontSize: '20px', border: 'none', background: 'none', color: 'var(--color-text-primary)', outline: 'none' }} placeholder="$0.00" />
                 </div>
                 
-                <div style={{ marginBottom: '8px', fontSize: '14px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>Then Execute</div>
+                <div style={{ marginBottom: '8px', fontSize: '14px', fontWeight: 500, color: 'var(--color-text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Then Execute</span>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', color: autoExecuteAgent ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
+                    <input type="checkbox" checked={autoExecuteAgent} onChange={(e) => setAutoExecuteAgent(e.target.checked)} style={{ accentColor: 'var(--color-success)' }} />
+                    Auto-Sign Agent ⚡
+                  </label>
+                </div>
                 <div style={{ background: 'var(--color-bg-tertiary)', borderRadius: '12px', border: '1px solid var(--color-border)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
                    <select value={condAction} onChange={(e) => setCondAction(e.target.value as ConditionAction)} style={{ padding: '8px', border: '1px solid var(--color-border)', borderRadius: '6px', fontSize: '14px', background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)', outline: 'none', width: '100%' }}>
                      <option value="buy_algo">Swap {selectedBaseAsset}</option>
@@ -769,18 +818,12 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
 
       {/* ── Bottom Tabs ─────────────────────── */}
       <div className="card" style={{ padding: '20px' }}>
-        <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--color-border)', marginBottom: '16px' }}>
-          {(['conditions', 'trades', 'payments', 'ai'] as BottomTab[]).map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} style={{
-              padding: '8px 20px', border: 'none',
-              borderBottom: activeTab === tab ? '2px solid var(--color-accent)' : '2px solid transparent',
-              background: 'none', color: activeTab === tab ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
-              fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: activeTab === tab ? 700 : 400,
-              letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer',
-            }}>
-              {tab === 'conditions' ? `Conditions (${conditionsList.filter(c => c.status === 'monitoring' || c.status === 'met').length})` : tab === 'trades' ? 'Trade History' : tab === 'payments' ? 'Payments' : 'AI Log'}
-            </button>
-          ))}
+        <div style={{ display: 'flex', gap: '24px', borderBottom: '1px solid var(--color-border)', marginBottom: '16px' }}>
+           <button className={`btn btn-ghost ${activeTab === 'conditions' ? 'btn-primary' : ''}`} onClick={() => setActiveTab('conditions')} style={{ borderRadius: 0, borderBottom: activeTab === 'conditions' ? '2px solid var(--color-text-primary)' : 'none', padding: '12px 0' }}>Conditions ({conditionsList.length})</button>
+           <button className={`btn btn-ghost ${activeTab === 'trades' ? 'btn-primary' : ''}`} onClick={() => setActiveTab('trades')} style={{ borderRadius: 0, borderBottom: activeTab === 'trades' ? '2px solid var(--color-text-primary)' : 'none', padding: '12px 0' }}>Trade History</button>
+           <button className={`btn btn-ghost ${activeTab === 'payments' ? 'btn-primary' : ''}`} onClick={() => setActiveTab('payments')} style={{ borderRadius: 0, borderBottom: activeTab === 'payments' ? '2px solid var(--color-text-primary)' : 'none', padding: '12px 0' }}>Payments</button>
+           <button className={`btn btn-ghost ${activeTab === 'ai' ? 'btn-primary' : ''}`} onClick={() => setActiveTab('ai')} style={{ borderRadius: 0, borderBottom: activeTab === 'ai' ? '2px solid var(--color-text-primary)' : 'none', padding: '12px 0' }}>AI Log</button>
+           <button className={`btn btn-ghost ${activeTab === 'explorer' ? 'btn-primary' : ''}`} onClick={() => setActiveTab('explorer')} style={{ borderRadius: 0, borderBottom: activeTab === 'explorer' ? '2px solid var(--color-success)' : 'none', padding: '12px 0', color: activeTab === 'explorer' ? 'var(--color-success)' : 'inherit' }}>Transactions</button>
         </div>
 
         {/* Conditions Tab */}
@@ -898,15 +941,47 @@ const MarketDataPanel: React.FC<MarketDataPanelProps> = ({
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', fontWeight: 700, color: aiDecision?.action === 'buy' ? 'var(--color-success)' : aiDecision?.action === 'sell' ? 'var(--color-error)' : 'var(--color-text-secondary)' }}>{aiDecision?.action?.toUpperCase() ?? 'NONE'}</div>
               </div>
               <div>
-                <div style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', letterSpacing: '0.06em', marginBottom: '4px', textTransform: 'uppercase' }}>AI Trades</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', fontWeight: 700 }}>{portfolio.trades.filter(t => t.source === 'ai').length}</div>
+                <div style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', letterSpacing: '0.06em', marginBottom: '4px', textTransform: 'uppercase' }}>Memory</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--color-text-primary)' }}>{portfolio.trades.length} interaction logs</div>
               </div>
             </div>
-            {aiDecision && (
-              <div style={{ padding: '12px', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
-                <div style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Latest Reasoning</div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', lineHeight: 1.6, fontFamily: 'var(--font-mono)' }}>{aiDecision.reason}</div>
+            
+            <div style={{ background: 'var(--color-bg-secondary)', padding: '16px', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+              <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px', fontWeight: 500 }}>LATEST AGENT OUTPUT</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: aiMessage ? 'var(--color-success)' : 'var(--color-text-tertiary)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                 {aiMessage || "Waiting for next cycle..."}
+                 {aiLoading && " \n\nThinking..."}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Transactions / Lora Explorer Tab */}
+        {activeTab === 'explorer' && (
+          <div style={{ overflowX: 'auto' }}>
+            {payments.length === 0 && portfolio.trades.length === 0 ? (
+              <div style={{ padding: '30px', textAlign: 'center', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}>No on-chain transactions yet.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                <thead><tr>{['Type', 'Full TxID (Lora Copy)', 'Time'].map((h) => (<th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: '10px', color: 'var(--color-text-tertiary)', letterSpacing: '0.1em', textTransform: 'uppercase', borderBottom: '1px solid var(--color-border)', fontWeight: 500 }}>{h}</th>))}</tr></thead>
+                <tbody>
+                  {[...portfolio.trades.filter(t => t.id.startsWith('tx_') || t.id.length > 20).map(t => ({ id: t.id, type: `SWAP (${t.action})`, time: t.time })), ...payments.map(p => ({ id: p.txId, type: 'PAYMENT', time: p.time }))]
+                    .sort((a, b) => new Date(`1970/01/01 ${b.time}`).getTime() - new Date(`1970/01/01 ${a.time}`).getTime())
+                    .slice(0, 30)
+                    .map((tx, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                      <td style={{ padding: '12px', width: '20%' }}><span style={{ fontSize: '10px', color: tx.type === 'PAYMENT' ? 'var(--color-accent)' : 'var(--color-success)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{tx.type}</span></td>
+                      <td style={{ padding: '12px', width: '60%', wordBreak: 'break-all', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--color-text-primary)' }}>
+                        {tx.id}
+                        {tx.id.length > 30 && (
+                          <a href={`https://lora.algonode.network/testnet/transaction/${tx.id}`} target="_blank" rel="noreferrer" style={{ marginLeft: '12px', color: 'var(--color-success)', textDecoration: 'none', fontWeight: 'bold' }}>View ↗</a>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px', width: '20%', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>{tx.time}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         )}

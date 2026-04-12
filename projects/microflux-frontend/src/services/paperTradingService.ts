@@ -107,10 +107,30 @@ export function executeBuy(
   portfolio.trades.unshift(trade);
   if (portfolio.trades.length > 50) portfolio.trades.pop();
 
-  // Simulate MicroFlux payment
-  logPayment();
-
   return { success: true, trade };
+}
+
+export function logRealTrade(
+  action: 'BUY' | 'SELL',
+  token: string,
+  price: number,
+  amount: number,
+  total: number,
+  txId?: string
+): void {
+  const trade: Trade = {
+    id: txId || `tx_${Date.now()}`,
+    time: new Date().toLocaleTimeString(),
+    timestamp: Date.now(),
+    action,
+    token,
+    price,
+    amount,
+    total,
+    source: 'manual',
+  };
+  portfolio.trades.unshift(trade);
+  if (portfolio.trades.length > 50) portfolio.trades.pop();
 }
 
 /**
@@ -143,8 +163,6 @@ export function executeSell(
   portfolio.trades.unshift(trade);
   if (portfolio.trades.length > 50) portfolio.trades.pop();
 
-  logPayment();
-
   return { success: true, trade };
 }
 
@@ -167,12 +185,12 @@ export function resetPortfolio(): Portfolio {
 
 // ── MicroFlux Payment Simulation ─────────────
 
-function logPayment(): void {
+export function logRealPayment(txId: string, fee: string = '0.001 ALGO'): void {
   paymentLogs.unshift({
-    txId: 'mfx_' + Math.random().toString(36).substr(2, 12),
+    txId,
     time: new Date().toLocaleTimeString(),
     status: 'confirmed',
-    fee: '0.001 ALGO',
+    fee,
   });
   if (paymentLogs.length > 30) paymentLogs.pop();
 }

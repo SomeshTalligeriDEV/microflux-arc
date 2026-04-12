@@ -357,6 +357,65 @@ export const TEMPLATES: WorkflowTemplate[] = [
     ],
   },
 
+  {
+    id: 'tpl_tinyman_swap_receiver',
+    name: 'Tinyman Swap & Routing',
+    description: 'Provide an external wallet address. The AI agent will auto-swap ALGO for USDC on Tinyman and immediately route it to the provided destination wallet address.',
+    category: 'trading',
+    tags: ['defi', 'swap', 'tinyman', 'transfer', 'agent'],
+    difficulty: 'advanced',
+    estimatedGas: '0.005 ALGO',
+    author: 'MICROFLUX-X1',
+    nodes: [
+      {
+        id: 'n1',
+        type: 'wallet_event',
+        label: 'Trigger: Manual',
+        category: 'trigger',
+        config: { event: 'manual_trigger' },
+        position: { x: 50, y: 200 },
+      },
+      {
+        id: 'n2',
+        type: 'tinyman_swap',
+        label: 'Swap ALGO → USDC',
+        category: 'defi',
+        config: { fromAssetId: 0, toAssetId: 31566704, amount: 1000000, slippage: 1 },
+        position: { x: 300, y: 200 },
+      },
+      {
+        id: 'n3',
+        type: 'filter',
+        label: 'Check Swap Tx Success',
+        category: 'logic',
+        config: { condition: 'eq', field: 'status', value: 'success' },
+        position: { x: 550, y: 200 },
+      },
+      {
+        id: 'n4',
+        type: 'asa_transfer',
+        label: 'Route USDC to Wallet',
+        category: 'action',
+        config: { asset_id: 31566704, amount: 1000000, receiver: 'TARGET_WALLET_ADDRESS' },
+        position: { x: 800, y: 200 },
+      },
+      {
+        id: 'n5',
+        type: 'browser_notification',
+        label: 'Routing Complete',
+        category: 'notification',
+        config: { title: 'Swap & Route', body: 'USDC successfully routed.' },
+        position: { x: 1050, y: 200 },
+      },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      { id: 'e2', source: 'n2', target: 'n3' },
+      { id: 'e3', source: 'n3', target: 'n4' },
+      { id: 'e4', source: 'n4', target: 'n5' },
+    ],
+  },
+
   // ── AUTOMATION ──────────────────────────────
   {
     id: 'tpl_scheduled_payment',
