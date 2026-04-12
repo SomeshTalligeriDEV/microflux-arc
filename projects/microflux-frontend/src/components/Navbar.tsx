@@ -54,11 +54,6 @@ const Navbar: React.FC<NavbarProps> = ({
             Saved Workflows
           </NavLink>
         </li>
-        <li>
-          <NavLink to="/ai" className={currentPage === 'ai' ? 'active' : ''}>
-            AI
-          </NavLink>
-        </li>
       </ul>
 
       <div className="navbar-actions">
