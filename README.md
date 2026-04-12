@@ -37,6 +37,10 @@ In the landscape of modern decentralized finance, MicroFlux serves as a programm
 | **Hybrid Connectivity** | Real-time Web2/Web3 Bridge | Seamlessly exports blockchain state to Google Sheets and Telegram. |
 | **Visual Architecture** | React Flow Logic Canvas | Provides a low-code environment for complex vault and treasury tasks. |
 | **AI Synthesis** | LLM-Integrated Copilot | Converts natural language descriptions into valid on-chain execution paths. |
+| **DeFi Liquidity Routing** | Native Tinyman V2 Integration | Executes atomic ALGO/USDC swaps directly against Testnet AMM pools. |
+| **Autonomous Signer Agents** | Loop-Driven Trading Execution | AI agents can bypass manual approval queues for self-executing conditions. |
+| **Deep Link Architecture** | Native HTML5 History Routing | Enables seamless URL sharing for specific app states (e.g. `/builder`, `/ai`). |
+| **On-Chain Telemetry** | Syncs Real-Time Global States | Dedicated internal Lora explorer for mapping and monitoring transaction logic. |
 
 ---
 
@@ -117,5 +121,3 @@ Licensed under the MIT License. Produced for the Algorand Developer Ecosystem.
 ---
 
 **Professional Algorand Automation | Build. Verify. Execute.**
-
-This paste expires in <1 hour. Public IP access. Share whatever you see with others in seconds with Context. Terms of ServiceReport this
