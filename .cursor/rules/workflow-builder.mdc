@@ -1,0 +1,63 @@
+---
+description: Workflow builder — React Flow canvas, node system, execution modes
+globs: projects/microflux-frontend/src/components/WorkflowBuilder.tsx, projects/microflux-frontend/src/services/nodeDefinitions.ts
+alwaysApply: false
+---
+
+# Workflow Builder
+
+## React Flow Setup
+
+Uses **React Flow v11** (`reactflow` package, NOT `@xyflow/react`).
+The canvas renders `MicrofluxNode` as the custom node type.
+
+**Node data shape** (`CanvasNodeData`):
+```typescript
+{ id, type, label, category, config: Record<string, any>, position, icon, color, isReal }
+```
+
+**Edge shape**: `{ id, source, target }` → rendered as `smoothstep`, animated.
+
+## Execution Order
+
+`getExecutionOrder()` uses **Kahn's topological sort** on the DAG.
+Unconnected nodes are appended at the end. Execution follows this order.
+
+## Three Execution Modes
+
+1. **Direct** — sequential node-by-node execution via wallet (`send_payment`, `asa_transfer`, etc.)
+2. **Atomic** — batches payments + ASA transfers into one atomic transaction group with workflow hash
+3. **Contract** — calls `WorkflowExecutor` smart contract with hashed workflow
+
+Toggle via "Use Smart Contract" checkbox in the builder UI.
+
+## Adding a New Node Type
+
+1. Add definition in `src/services/nodeDefinitions.ts`:
+```typescript
+{
+  type: 'my_new_type',
+  label: 'My New Block',
+  category: 'actions',  // triggers | actions | logic | defi | notifications
+  icon: '🔧',
+  color: '#hex',
+  description: 'What this block does',
+  configFields: [
+    { key: 'param1', label: 'Parameter 1', type: 'text', placeholder: '...' },
+  ],
+}
+```
+
+2. Add execution logic in `WorkflowBuilder.tsx`:
+   - In `simulateWorkflow()` — add a case for simulation logging
+   - In `executeWorkflow()` — add a case under the `switch (node.type)` for real execution
+
+3. Update `server/src/core/ai/prompts.ts` so the AI engine knows about the new block type.
+
+4. If the block needs server-side execution, add a case in `server/src/core/engine/runner.ts`.
+
+## Simulation vs Execution
+
+- **Simulate** walks nodes in order, generates mock logs, uses real CoinGecko/Tinyman quotes
+- **Execute** performs real Algorand transactions via the connected wallet
+- Both use the same `getExecutionOrder()` DAG sort

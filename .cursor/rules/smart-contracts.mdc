@@ -1,0 +1,47 @@
+---
+description: Algorand smart contract conventions (Algorand Python / ARC-4)
+globs: projects/microflux-contracts/**/*.py
+alwaysApply: false
+---
+
+# Smart Contracts (Algorand Python)
+
+## Current Contract
+
+**WorkflowExecutor** (`smart_contracts/executor/contract.py`) — ARC-4 contract:
+- `register_workflow(hash)` — creator-only, stores workflow hash, increments count
+- `execute(hash)` — runs workflow (public or creator-only based on flag)
+- `set_public_execution(flag)` — toggle public access
+- Readonly getters: `get_execution_count`, `get_workflow_count`, `get_app_info`, `verify_hash`
+
+## Build & Deploy
+
+```bash
+cd projects/microflux-contracts
+poetry run python -m smart_contracts build        # Compile to TEAL + ARC-56 JSON
+npm run deploy                                     # Deploy via AlgoKit to configured network
+```
+
+Artifacts go to `smart_contracts/artifacts/<name>/`. The TypeScript client is auto-generated
+and copied to `projects/microflux-frontend/src/contracts/`.
+
+## Adding a New Contract
+
+1. Create `smart_contracts/<name>/contract.py`
+2. Use `algopy` / `algopy.arc4`:
+```python
+from algopy import ARC4Contract, Global, Txn, UInt64, arc4
+
+class MyContract(ARC4Contract):
+    @arc4.abimethod()
+    def my_method(self, param: arc4.String) -> arc4.String:
+        ...
+```
+3. Run `poetry run python -m smart_contracts build <name>`
+4. Create `deploy-config.ts` if needed
+5. Generate TS client: `algokit generate client` (handled by `__main__.py`)
+
+## Testing
+
+Test on **Algorand TestNet** (not LocalNet for demo reliability).
+App ID for deployed WorkflowExecutor is stored in `VITE_APP_ID` env var.

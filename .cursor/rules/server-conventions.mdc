@@ -1,0 +1,69 @@
+---
+description: Server-side conventions — Express routes, controllers, Prisma, error handling
+globs: server/src/**/*.ts
+alwaysApply: false
+---
+
+# Server Conventions
+
+## Module System
+
+This is an ESM project (`"type": "module"` in package.json). All imports use ESM syntax.
+**tsx watch** runs the dev server — it auto-restarts on file changes.
+
+## Prisma Client (CRITICAL)
+
+The Prisma client in `server/src/exports/prisma.ts` uses **lazy initialization** via a Proxy.
+This is required because ESM evaluates all imports before any code in `index.ts` runs,
+and `DATABASE_URL` isn't available until `dotenv.config()` executes.
+
+```typescript
+// CORRECT — always import from exports/prisma.ts
+import { prisma } from '../exports/prisma';
+
+// WRONG — never create a new PrismaClient elsewhere
+import { PrismaClient } from '@prisma/client';
+const p = new PrismaClient(); // BREAKS — no adapter, no connection string
+```
+
+## Route / Controller Pattern
+
+```
+routes/<name>.routes.ts   → Express Router, defines HTTP methods + paths
+controllers/<name>.controller.ts → Handler functions, imports prisma, returns JSON
+```
+
+All API routes are prefixed with `/api/`. Mount new routers in `index.ts`:
+```typescript
+app.use('/api/<name>', nameRoutes);
+```
+
+## Error Handling in Controllers
+
+```typescript
+// Standard pattern — always catch and return structured error
+try {
+  const data = await prisma.model.findMany({ ... });
+  return res.status(200).json({ success: true, data });
+} catch (error) {
+  console.error('Context-specific message:', error);
+  return res.status(500).json({ error: 'User-facing message' });
+}
+```
+
+## Adding New Prisma Models
+
+1. Edit `server/prisma/schema.prisma`
+2. Run `npx prisma migrate dev --name <description>` from `server/`
+3. Prisma client auto-regenerates — the lazy proxy picks up new models automatically
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `index.ts` | Express app, CORS, route mounting, Telegram polling |
+| `exports/prisma.ts` | Singleton PrismaClient (Neon adapter, lazy) |
+| `core/ai/intentParser.ts` | AI intent pipeline (Groq + tool calling) |
+| `core/ai/prompts.ts` | System prompt for the AI engine |
+| `core/engine/runner.ts` | Server-side workflow executor (send_payment, etc.) |
+| `controllers/webhook.controller.ts` | Telegram update handler (largest controller) |

@@ -1,0 +1,78 @@
+---
+description: Frontend conventions — React components, services, styling, wallet integration
+globs: projects/microflux-frontend/src/**/*.{ts,tsx,css}
+alwaysApply: false
+---
+
+# Frontend Conventions
+
+## Component Architecture
+
+- **Functional components only** — no class components
+- **State colocation** — keep state in the component that owns it; lift only when shared
+- **Props interfaces** — define inline or named interface above the component
+
+```typescript
+interface MyComponentProps {
+  activeAddress: string | null;
+  onAction: (id: string) => void;
+}
+
+const MyComponent: React.FC<MyComponentProps> = ({ activeAddress, onAction }) => { ... };
+export default MyComponent;
+```
+
+## Routing
+
+`App.tsx` → `BrowserRouter` → `Home.tsx` handles nested routes:
+- `/` → HeroSection, `/builder` → WorkflowBuilder, `/marketplace` → Marketplace
+- `/market` → MarketDataPanel, `/saved` → SavedWorkflows, `/ai` → AIPage
+- `/approve/:token` → ApproveExecution (separate from Home)
+
+Add new pages in `Home.tsx` route switch + `Navbar` links.
+
+## Styling
+
+**Custom CSS with CSS variables** in `src/styles/App.css`. No Tailwind.
+
+```css
+/* Use existing CSS variables */
+var(--color-bg), var(--color-text), var(--color-primary), var(--color-border)
+var(--radius-md), var(--text-sm), var(--text-xs)
+```
+
+Utility classes available: `.card`, `.btn`, `.btn-primary`, `.btn-outline`, `.btn-ghost`,
+`.text-sm`, `.text-xs`, `.text-muted`, `.font-bold`, `.animate-fadeIn`
+
+Prefer CSS classes over inline styles for new components. Inline styles exist in older
+components but should not be the pattern going forward.
+
+## API Client
+
+All server calls go through `src/services/api.ts`. Add new endpoints there:
+
+```typescript
+export const api = {
+  myNewEndpoint: async (param: string): Promise<ResponseType> => {
+    const res = await fetch(`${BASE_URL}/my-endpoint`, { ... });
+    return readJsonOrThrow<ResponseType>(res);
+  },
+};
+```
+
+`BASE_URL` defaults to `http://localhost:8080/api` (configurable via `VITE_API_BASE_URL`).
+
+## Wallet Access
+
+```typescript
+import { useWallet } from '@txnlab/use-wallet-react';
+const { activeAddress, transactionSigner } = useWallet();
+```
+
+Always null-check `activeAddress` before wallet-dependent operations.
+
+## Node Definitions
+
+All workflow block types are defined in `src/services/nodeDefinitions.ts`.
+To add a new block type, add an entry to `NODE_DEFINITIONS` array with:
+`type`, `label`, `category`, `icon`, `color`, `description`, `configFields[]`.

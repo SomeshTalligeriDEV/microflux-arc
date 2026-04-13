@@ -1,0 +1,65 @@
+---
+description: MicroFlux project overview — architecture, monorepo layout, and core principles. Read this first.
+alwaysApply: true
+---
+
+# MicroFlux — Project Overview
+
+MicroFlux is an **intent-based DeFi automation platform on Algorand**. Users describe financial goals in plain English (or drag-and-drop blocks), see them as a visual workflow, and execute them on-chain.
+
+## Monorepo Layout
+
+```
+microflux-arc/
+├── server/                         # Express API + AI intent engine + Telegram bot
+│   ├── src/
+│   │   ├── index.ts                # Express bootstrap, CORS, Telegram long-polling
+│   │   ├── exports/prisma.ts       # Lazy Prisma singleton (Neon adapter)
+│   │   ├── controllers/            # Route handlers
+│   │   ├── routes/                 # Express routers
+│   │   ├── core/
+│   │   │   ├── ai/                 # Intent parser + system prompt (Groq LLM)
+│   │   │   ├── engine/             # Algorand clients, Folks Router, workflow runner
+│   │   │   ├── integrations/       # Telegram, CoinGecko, NFD
+│   │   │   ├── state/              # In-memory chat state + pending executions
+│   │   │   └── utils/              # Amount conversion helpers
+│   │   └── services/               # Voice transcription (Sarvam)
+│   └── prisma/                     # Schema + migrations (Neon PostgreSQL)
+├── projects/
+│   ├── microflux-frontend/         # React 18 + Vite 5 + React Flow workflow builder
+│   │   ├── src/components/         # UI components (WorkflowBuilder, Navbar, etc.)
+│   │   ├── src/services/           # API client, node definitions, wallet, DEX, market
+│   │   ├── src/contracts/          # Generated AlgoKit TypeScript clients
+│   │   └── src/styles/App.css      # Global CSS (custom properties, no Tailwind)
+│   └── microflux-contracts/        # Algorand Python smart contracts (ARC-4)
+│       └── smart_contracts/executor/contract.py
+├── .algokit.toml                   # AlgoKit workspace config
+└── package.json                    # Root monorepo scripts
+```
+
+## Key Tech Decisions (Do NOT Change Without Discussion)
+
+- **Server**: Express 5 + TypeScript 6 + ESM (`"type": "module"`), run via `tsx watch`
+- **Database**: Prisma 7 + `@prisma/adapter-neon` (lazy init via Proxy — do NOT eagerly create PrismaClient)
+- **AI**: Groq API via Vercel AI SDK (`ai` + `@ai-sdk/groq`), model `openai/gpt-oss-120b`, tool-calling pattern
+- **Frontend**: React 18 + Vite 5 + React Flow v11 (NOT v12), custom CSS (no Tailwind)
+- **Wallet**: `@txnlab/use-wallet-react` v4 (Pera, Defly, Lute)
+- **Smart contracts**: Algorand Python (Puya/algopy), ARC-4, compiled via AlgoKit
+- **DEX**: Tinyman V2 SDK for swaps; CoinGecko for price feeds
+- **Telegram**: Long polling (NOT webhooks) in `index.ts`
+
+## Environment Variables
+
+Server `.env` requires: `PORT`, `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`
+Optional: `MFX_DEBUG_AI`, `ALGORAND_SENDER_MNEMONIC`, `SARVAM_API_KEY`, `WEB_APP_URL`
+
+Frontend `.env` requires: `VITE_ALGOD_SERVER`, `VITE_ALGOD_PORT`, `VITE_ALGOD_TOKEN`, `VITE_ALGOD_NETWORK`
+Optional: `VITE_API_BASE_URL` (defaults to `http://localhost:8080/api`), `VITE_APP_ID`, `VITE_GROQ_API_KEY`
+
+## Critical Constraints
+
+1. **Never commit secrets** — `.env` files are gitignored
+2. **Prisma client is lazy** — initialized on first DB call, not at import time (ESM ordering)
+3. **Algorand amounts** — always convert ALGO to microALGO (`* 1_000_000`) before transactions
+4. **Frontend API base** — defaults to `http://localhost:8080/api`; production uses `VITE_API_BASE_URL`
+5. **CORS** — server allows `localhost:5173` and `microflux-frontend.vercel.app`

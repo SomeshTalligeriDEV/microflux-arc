@@ -1,0 +1,64 @@
+---
+description: Future features roadmap — what to build next and how to approach each feature
+alwaysApply: true
+---
+
+# MicroFlux — Future Roadmap
+
+## Current State (What's Built & Working)
+
+- Visual workflow builder with React Flow (15+ node types)
+- AI intent engine (Groq LLM → workflow generation via tool calling)
+- Wallet connection (Pera, Defly, Lute) + TestNet transactions
+- Workflow CRUD (save/load/delete via Prisma + Neon PostgreSQL)
+- Telegram bot with linking, NL commands, voice transcription, approval flow
+- Smart contract (WorkflowExecutor) deployed on TestNet
+- Tinyman V2 swaps, CoinGecko price feeds, market data terminal
+- Marketplace with pre-built workflow templates
+- Three execution modes: direct, atomic, smart contract
+- Paper trading with AI copilot (Groq-powered strategy)
+
+## Planned Features (Priority Order)
+
+### P0 — Critical for Demo/Launch
+
+1. **Wire unused routes** — `agent.routes.ts`, `execute.routes.ts` are defined but not
+   mounted in `index.ts`. Mount them or remove dead code.
+2. **Persistent execution state** — move `chatState` and `executionStore` from in-memory
+   Maps to database tables. They reset on every server restart.
+3. **Error recovery in Telegram polling** — add exponential backoff and reconnection
+   logic for network failures (currently retries after fixed 5s).
+
+### P1 — High Value Features
+
+4. **Workflow scheduling / Timer Loop execution** — server-side cron or setInterval
+   that triggers saved workflows on schedule (DCA use case).
+5. **Price Alert triggers** — background price monitor that triggers workflows
+   when conditions are met (stop-loss, buy-the-dip use cases).
+6. **Folks Router integration** — the `folksRouter.ts` engine file exists but needs
+   full swap execution wiring for better DEX aggregation.
+7. **Multi-wallet support** — allow users to link multiple wallets.
+
+### P2 — Nice to Have
+
+8. **Workflow sharing** — public URLs for workflow templates.
+9. **Discord notifications** — `discord_notify` node type exists in definitions
+   but has no backend implementation.
+10. **Fiat on/off-ramp** — Saber Money API integration (listed in plan, not built).
+11. **Email alerts** — `email_alert` node type placeholder.
+12. **Workflow versioning** — track edit history of workflows.
+
+### P3 — Future Vision
+
+13. **Mainnet deployment** — switch from TestNet to MainNet (change node URLs + funding).
+14. **Multi-chain** — abstract the execution engine for other chains.
+15. **Workflow marketplace with payments** — sell/buy premium templates using ALGO.
+
+## Implementation Guidelines for New Features
+
+When adding a new feature:
+1. **Server**: Add route + controller + any new Prisma models
+2. **Frontend**: Add service method in `api.ts` → component → wire to UI
+3. **AI**: Update system prompt in `prompts.ts` if the AI should know about it
+4. **Blocks**: Follow the node definition pattern in `nodeDefinitions.ts`
+5. **Test on TestNet** before any mainnet consideration

@@ -1,0 +1,53 @@
+---
+description: Telegram bot integration — polling, commands, approval flow
+globs: server/src/controllers/webhook.controller.ts, server/src/core/integrations/telegram.ts, server/src/core/state/**/*.ts
+alwaysApply: false
+---
+
+# Telegram Integration
+
+## Architecture
+
+- **Long polling** in `server/src/index.ts` (`pollTelegram()`) — NOT webhooks
+- Updates dispatched to `handleTelegramUpdate` in `webhook.controller.ts`
+- The `webhook.routes.ts` file exists but is **not mounted** — ignore it
+
+## User Flow
+
+1. User connects wallet in frontend → generates link code via `/api/user/generate-link`
+2. User sends `/link CODE` in Telegram → bot links `telegramId` to `walletAddress`
+3. User sends natural language in Telegram → `parseIntent()` → build or execute workflow
+4. Execute path → approval link sent → user signs in frontend → confirmation sent back to Telegram
+
+## Commands
+
+| Command | Behavior |
+|---------|----------|
+| `/start` | Welcome message |
+| `/link CODE` | Link Telegram to wallet |
+| `/workflows` | List saved workflows as inline buttons |
+| `/status` | Show wallet + link status |
+| Other `/...` | Help message with available commands |
+
+## Voice Messages
+
+Voice messages are transcribed via Sarvam API (`services/sarvam.service.ts`).
+Requires `SARVAM_API_KEY` in `.env` (not in `.env.example` — add it if using voice).
+
+## State Management
+
+- `chatState.ts` — in-memory Map for multi-turn slot filling (e.g. collecting receiver address)
+- `executionStore.ts` — in-memory Map for pending execution approval tokens
+
+Both are **in-memory only** and reset on server restart. For production, these should be
+moved to Redis or the database.
+
+## Adding New Commands
+
+In `webhook.controller.ts`, add a case in the text message handler:
+```typescript
+if (text === '/mycommand') {
+  await sendTelegramMessage(chatId, 'Response');
+  return;
+}
+```

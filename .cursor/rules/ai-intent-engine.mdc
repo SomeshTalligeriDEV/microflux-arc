@@ -1,0 +1,65 @@
+---
+description: AI intent engine — how the Groq-powered NL→workflow pipeline works
+globs: server/src/core/ai/**/*.ts
+alwaysApply: false
+---
+
+# AI Intent Engine
+
+## Architecture
+
+The intent engine lives in `server/src/core/ai/` and uses **Vercel AI SDK tool-calling**:
+
+```
+User prompt → intentParser.ts → Groq LLM (gpt-oss-120b) → tool calls → result
+```
+
+**Three tools** the LLM can invoke:
+1. `search_saved_workflows` — searches user's saved workflows by name/keyword
+2. `execute_workflow` — selects a workflow to run (returns workflowId)
+3. `build_new_workflow` — generates a new workflow graph (nodes + edges + name)
+
+## Adding a New Tool
+
+In `server/src/core/ai/intentParser.ts`, add to the `tools` object:
+
+```typescript
+my_new_tool: tool({
+  description: 'What this tool does — be specific for the LLM',
+  parameters: z.object({
+    param1: z.string().describe('Description for LLM'),
+  }),
+  execute: async ({ param1 }) => {
+    // Tool logic here
+    return 'Result string for LLM';
+  },
+}),
+```
+
+## System Prompt
+
+Located in `server/src/core/ai/prompts.ts` as `AGENT_SYSTEM_PROMPT`.
+This prompt makes the LLM **Algorand-aware**: real ASA IDs, opt-in requirements,
+fee structure, amount conversion (ALGO → microALGO).
+
+When modifying the prompt:
+- Keep ASA ID references accurate (USDC=31566704, USDT=312769, etc.)
+- Maintain the node type vocabulary that matches `nodeDefinitions.ts` on the frontend
+- Test with at least 5 sample intents after changes
+
+## Context Rules
+
+The parser adds a **dynamic context rule** based on source:
+- **Web** (`source: 'web'`): biases toward `build_new_workflow`
+- **Telegram** (`source: 'telegram'`): biases toward search-first behavior
+
+## Amount Handling
+
+`normalizeAmountToMicroAlgos()` in `core/utils/amount.ts` auto-converts:
+- Values ≤ 10,000 → treated as ALGO, multiplied by 1,000,000
+- Values > 10,000 → treated as already in microALGO
+
+## Debug Mode
+
+Set `MFX_DEBUG_AI=1` in server `.env` to enable verbose logging of LLM calls,
+tool invocations, and token usage.
