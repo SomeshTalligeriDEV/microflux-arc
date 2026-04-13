@@ -131,48 +131,32 @@ const Navbar: React.FC<NavbarProps> = ({
         )}
 
         {activeAddress && (
-          isLinked ? (
-            <span style={{
+          <button
+            onClick={onLinkTelegram}
+            style={{
               fontSize: 'var(--text-xs)',
               fontWeight: 600,
               textTransform: 'uppercase',
               letterSpacing: '0.06em',
-              color: 'var(--color-success)',
-              background: 'rgba(34,197,94,0.1)',
+              color: isLinked ? 'var(--color-success)' : 'var(--color-error)',
+              background: isLinked ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
               padding: '3px 8px',
               borderRadius: 'var(--radius-sm)',
-              border: '1px solid rgba(34,197,94,0.3)',
-            }}>
-              TG Linked
-            </span>
-          ) : (
-            <button
-              onClick={onLinkTelegram}
-              style={{
-                fontSize: 'var(--text-xs)',
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-                color: 'var(--color-error)',
-                background: 'rgba(239,68,68,0.1)',
-                padding: '3px 8px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid rgba(239,68,68,0.3)',
-                cursor: 'pointer',
-                transition: 'all var(--transition-fast)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(239,68,68,0.2)';
-                e.currentTarget.style.boxShadow = '0 0 12px rgba(239,68,68,0.2)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(239,68,68,0.1)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            >
-              Link Telegram
-            </button>
-          )
+              border: `1px solid ${isLinked ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+              cursor: 'pointer',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = isLinked ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)';
+              e.currentTarget.style.boxShadow = isLinked ? '0 0 12px rgba(34,197,94,0.2)' : '0 0 12px rgba(239,68,68,0.2)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = isLinked ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          >
+            {isLinked ? 'TG Linked' : 'Link Telegram'}
+          </button>
         )}
       </div>
     </nav>

@@ -23,6 +23,8 @@ export interface TelegramLinkResponse {
   walletAddress: string;
   linkCode: string;
   command: string;
+  botUsername: string | null;
+  deepLink: string | null;
 }
 
 export interface PendingExecutionDetails {

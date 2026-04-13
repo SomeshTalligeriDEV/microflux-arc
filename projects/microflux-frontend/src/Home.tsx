@@ -253,6 +253,7 @@ const Home: React.FC = () => {
         openModal={openTelegramLinkModal}
         closeModal={toggleTelegramLinkModal}
         activeAddress={activeAddress ?? null}
+        isLinked={isLinked}
         onRefreshLinkStatus={refreshLinkStatus}
       />
     </div>

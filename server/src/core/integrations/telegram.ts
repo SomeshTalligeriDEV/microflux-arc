@@ -29,7 +29,30 @@ export const sendTelegramMessage = async (chatId: string | number, text: string)
       })
     });
 
-    return response.ok;
+    if (response.ok) {
+      return true;
+    }
+
+    // Fallback: Markdown parsing often fails for dynamic text (underscores, brackets, etc.).
+    // Retry once as plain text to avoid dropping critical bot messages.
+    const errText = await response.text();
+    console.warn('Telegram sendMessage (Markdown) failed, retrying plain text:', errText);
+
+    const fallback = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+      }),
+    });
+
+    if (!fallback.ok) {
+      const fallbackErrText = await fallback.text();
+      console.error('Telegram sendMessage fallback failed:', fallbackErrText);
+    }
+
+    return fallback.ok;
   } catch (error) {
     console.error("Telegram API Error:", error);
     return false;

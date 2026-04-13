@@ -80,10 +80,10 @@ const pollTelegram = async () => {
       if (!data.ok) {
         if (data.error_code === 409) {
           if (!conflictSuppressed) {
-            console.warn('[POLL WARN] Telegram 409 conflict: another getUpdates consumer is active for this bot token.');
+            console.warn('[POLL WARN] Telegram 409 conflict: another getUpdates consumer is active for this bot token. Stop other bot instances/webhook workers using the same token.');
           }
           conflictSuppressed = true;
-          await new Promise(resolve => setTimeout(resolve, 1500));
+          await new Promise(resolve => setTimeout(resolve, 3000));
           continue;
         }
 
