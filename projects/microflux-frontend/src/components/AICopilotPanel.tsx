@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { api } from '../services/api';
+import { inferCategory } from '../services/nodeDefinitions';
 import type { AIWorkflowResult, AINode, AIEdge } from '../services/aiService';
 
 interface AICopilotPanelProps {
@@ -20,14 +21,6 @@ type BackendBuildResponse = {
 
 const CATEGORIES = ['trigger', 'action', 'logic', 'defi', 'notification'] as const;
 type Category = (typeof CATEGORIES)[number];
-
-const inferCategory = (type: string): Category => {
-  if (['telegram_command', 'timer_loop', 'wallet_event', 'webhook_trigger'].includes(type)) return 'trigger';
-  if (['send_payment', 'asa_transfer', 'app_call', 'http_request'].includes(type)) return 'action';
-  if (['delay', 'filter', 'debug_log'].includes(type)) return 'logic';
-  if (['get_quote', 'price_feed'].includes(type)) return 'defi';
-  return 'notification';
-};
 
 const normalizeNode = (node: any, index: number): AINode => {
   const type = String(node?.type ?? 'debug_log');

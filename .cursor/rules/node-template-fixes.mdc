@@ -1,0 +1,55 @@
+---
+description: Conventions for node definitions, template data, and execution consistency
+globs: projects/microflux-frontend/src/services/nodeDefinitions.ts, projects/microflux-frontend/src/services/templateService.ts, projects/microflux-frontend/src/components/WorkflowBuilder.tsx, server/src/core/engine/runner.ts, server/src/core/ai/prompts.ts
+alwaysApply: false
+---
+
+# Node & Template Conventions
+
+## Single Source of Truth for Categories
+
+`nodeDefinitions.ts` exports `inferCategory(type)` — the canonical category resolver.
+All other files (aiService, AICopilotPanel, Home) must import from there.
+Never duplicate category logic; add new types to `NODE_DEFINITIONS` first.
+
+## Filter Operator Contract
+
+Filter nodes accept these operators in `config.condition`:
+- Equality: `==`, `eq`
+- Inequality: `!=`, `neq`
+- Greater than: `>`, `gt`
+- Greater or equal: `>=`, `gte`
+- Less than: `<`, `lt`
+- Less or equal: `<=`, `lte`
+
+When adding new operators, update both `WorkflowBuilder.tsx` (`executeDirect` filter block)
+and `server/src/core/engine/runner.ts` (server-side filter).
+
+## sharedContext Contract
+
+Execution passes data between nodes via `sharedContext: Record<string, any>`.
+Node types that write to sharedContext:
+- `send_payment`: `.status`, `.amount`, `.txId`
+- `tinyman_swap`: `.swap_status`, `.swap_txId`
+- `get_quote` / `price_feed`: `.price`
+- `filter`: reads from sharedContext, does not write
+
+## Template Config Rules
+
+- Never use placeholder addresses like `ALGO_ADDRESS_PLACEHOLDER` or `TEAM_LEAD_ADDRESS`
+- Use empty strings for addresses users must fill in
+- Filter conditions must use operators from the supported set above
+- Config keys must match what execution logic reads (`amount`, `receiver`, not `amount_from`)
+
+## Adding a New Node Type (Checklist)
+
+1. `nodeDefinitions.ts` — add to `NODE_DEFINITIONS` array
+2. `WorkflowBuilder.tsx` — add case in `simulateWorkflow` and `executeDirect`
+3. `prompts.ts` — add to the node type list in `AGENT_SYSTEM_PROMPT`
+4. `runner.ts` — add server-side execution case (if applicable)
+5. Verify `inferCategory` returns correct category (auto-derived from NODE_DEFINITIONS)
+
+## isReal Semantics
+
+- `true` = real Algorand on-chain transaction (payment, ASA transfer, app call, Tinyman swap)
+- `false` = off-chain, simulation-only, or external API (browser notification, spreadsheet, HTTP)

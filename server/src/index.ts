@@ -7,6 +7,8 @@ import userRoutes from './routes/user.routes';
 import workflowRoutes from './routes/workflow.routes';
 import sheetsRoutes from './routes/sheets.routes';
 import executionRoutes from './routes/execution.routes';
+import agentRoutes from './routes/agent.routes';
+import executeRoutes from './routes/execute.routes';
 import { parseIntent as parseIntentFromAi } from './core/ai/intentParser';
 
 import path from 'path';
@@ -149,6 +151,12 @@ app.use('/api/sheets', sheetsRoutes);
 
 //execution routes
 app.use('/api/execution', executionRoutes);
+
+//agent routes
+app.use('/api/agent', agentRoutes);
+
+//execute routes
+app.use('/api/execute', executeRoutes);
 
 pollTelegram();
 

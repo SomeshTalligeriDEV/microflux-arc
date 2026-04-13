@@ -49,7 +49,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'send_payment',
         label: 'Send 1 ALGO',
         category: 'action',
-        config: { amount: 1000000, receiver: 'ALGO_ADDRESS_PLACEHOLDER' },
+        config: { amount: 1000000, receiver: '' },
         position: { x: 350, y: 200 },
       },
       {
@@ -90,7 +90,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'filter',
         label: 'Check Opt-In',
         category: 'logic',
-        config: { condition: 'receiver_opted_in', asset_id: 0 },
+        config: { condition: '==', field: 'status', value: 'opted_in' },
         position: { x: 350, y: 200 },
       },
       {
@@ -98,7 +98,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'asa_transfer',
         label: 'Transfer ASA',
         category: 'action',
-        config: { asset_id: 0, amount: 100, receiver: 'ALGO_ADDRESS_PLACEHOLDER' },
+        config: { asset_id: 0, amount: 100, receiver: '' },
         position: { x: 620, y: 150 },
       },
       {
@@ -158,7 +158,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'send_payment',
         label: 'Pay Team Lead (40%)',
         category: 'action',
-        config: { amount: 4000000, receiver: 'TEAM_LEAD_ADDRESS' },
+        config: { amount: 4000000, receiver: '' },
         position: { x: 650, y: 100 },
       },
       {
@@ -166,7 +166,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'send_payment',
         label: 'Pay Dev Fund (35%)',
         category: 'action',
-        config: { amount: 3500000, receiver: 'DEV_FUND_ADDRESS' },
+        config: { amount: 3500000, receiver: '' },
         position: { x: 650, y: 250 },
       },
       {
@@ -174,7 +174,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'send_payment',
         label: 'Pay Reserve (25%)',
         category: 'action',
-        config: { amount: 2500000, receiver: 'RESERVE_ADDRESS' },
+        config: { amount: 2500000, receiver: '' },
         position: { x: 650, y: 400 },
       },
       {
@@ -229,7 +229,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'filter',
         label: 'Price > $0.30?',
         category: 'logic',
-        config: { condition: 'gt', field: 'price', value: 0.30 },
+        config: { condition: '>', field: 'price', value: 0.30 },
         position: { x: 620, y: 200 },
       },
       {
@@ -287,7 +287,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'filter',
         label: 'Trade Logic Check',
         category: 'logic',
-        config: { condition: 'gt', field: 'price', value: 65000 },
+        config: { condition: '>', field: 'price', value: 65000 },
         position: { x: 800, y: 250 },
       },
       {
@@ -388,7 +388,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'filter',
         label: 'Check Swap Tx Success',
         category: 'logic',
-        config: { condition: 'eq', field: 'status', value: 'success' },
+        config: { condition: '==', field: 'status', value: 'success' },
         position: { x: 550, y: 200 },
       },
       {
@@ -396,7 +396,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'asa_transfer',
         label: 'Route USDC to Wallet',
         category: 'action',
-        config: { asset_id: 31566704, amount: 1000000, receiver: 'TARGET_WALLET_ADDRESS' },
+        config: { asset_id: 31566704, amount: 1000000, receiver: '' },
         position: { x: 800, y: 200 },
       },
       {
@@ -517,7 +517,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'filter',
         label: 'Balance >= 10 ALGO?',
         category: 'logic',
-        config: { condition: 'gte', field: 'balance', value: 10000000 },
+        config: { condition: '>=', field: 'balance', value: 10000000 },
         position: { x: 620, y: 200 },
       },
       {
@@ -525,7 +525,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'send_payment',
         label: 'Send Scheduled Payment',
         category: 'action',
-        config: { amount: 5000000, receiver: 'PAYEE_ADDRESS' },
+        config: { amount: 5000000, receiver: '' },
         position: { x: 890, y: 150 },
       },
       {
@@ -577,7 +577,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'filter',
         label: 'Validate Payload',
         category: 'logic',
-        config: { condition: 'has_field', field: 'amount' },
+        config: { condition: '!=', field: 'status', value: '' },
         position: { x: 350, y: 200 },
       },
       {
@@ -585,7 +585,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'send_payment',
         label: 'Execute Payment',
         category: 'action',
-        config: { amount_from: 'payload.amount', receiver_from: 'payload.receiver' },
+        config: { amount: 1000000, receiver: '' },
         position: { x: 620, y: 200 },
       },
       {
@@ -629,6 +629,6 @@ export function getTemplateById(id: string): WorkflowTemplate | undefined {
 export const CATEGORIES: { id: TemplateCategory; label: string; icon: string }[] = [
   { id: 'payments', label: 'Payments', icon: '💸' },
   { id: 'treasury', label: 'Treasury', icon: '🏦' },
-  { id: 'trading', label: 'Trading', icon: '' },
-  { id: 'automation', label: 'Automation', icon: '' },
+  { id: 'trading', label: 'Trading', icon: '📈' },
+  { id: 'automation', label: 'Automation', icon: '⚙️' },
 ];

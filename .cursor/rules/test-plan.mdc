@@ -1,0 +1,144 @@
+---
+description: Test matrix for node and template fixes — manual and automated verification
+globs: projects/microflux-frontend/src/components/WorkflowBuilder.tsx, projects/microflux-frontend/src/services/nodeDefinitions.ts, projects/microflux-frontend/src/services/templateService.ts
+alwaysApply: false
+---
+
+# Test Plan — Node & Template Fixes
+
+## Phase 1: Foundation
+
+### T1.1 Canonical inferCategory
+- [ ] Import `inferCategory` from `nodeDefinitions.ts` in `aiService.ts`, `AICopilotPanel.tsx`, `Home.tsx`
+- [ ] Verify `write_to_spreadsheet` resolves to `action` (not `notification`)
+- [ ] Verify `ai_trigger` resolves to `trigger` (not `notification`)
+- [ ] Verify `tinyman_swap` resolves to `defi` (not `notification`)
+- [ ] Verify `filter_condition` resolves to `logic`
+- [ ] Verify unknown types default to `logic`
+- [ ] Load a saved workflow with mixed node types — categories should match palette colors
+
+### T1.2 Filter Operator Expansion
+- [ ] Create workflow: `wallet_event → filter (condition: 'eq') → debug_log` — filter evaluates correctly
+- [ ] Test operators: `==`, `!=`, `>`, `<`, `>=`, `<=`, `eq`, `neq`, `gt`, `lt`, `gte`, `lte`
+- [ ] Template `tpl_tinyman_swap_receiver` filter (`eq`) no longer silently fails
+- [ ] Template `tpl_scheduled_payment` filter (`gte`) no longer silently fails
+
+### T1.3 Filter Branching (no more break)
+- [ ] Workflow: `send_payment → filter (false) → debug_log → browser_notification`
+  - Expected: filter logs false, debug_log and notification still execute
+- [ ] Workflow: `send_payment → filter (true) → debug_log`
+  - Expected: filter passes, debug_log executes normally
+- [ ] The old behavior (break stops ALL nodes) is eliminated
+
+### T1.4 sharedContext Population
+- [ ] `send_payment` success → `sharedContext.status === 'success'`, `.amount`, `.txId` set
+- [ ] `send_payment` failure → `sharedContext.status === 'failed'`
+- [ ] `get_quote` → `sharedContext.price` is set with live value
+- [ ] `price_feed` → `sharedContext.price` is set with live value
+- [ ] `tinyman_swap` success → `sharedContext.swap_status === 'success'`
+- [ ] `filter` reads from `sharedContext` and evaluates correctly
+
+## Phase 2: Node Execution Completeness
+
+### T2.1 telegram_command in Simulate
+- [ ] Add `telegram_command` to canvas, click Simulate
+- [ ] Log shows `[TELEGRAM] ... Command trigger received` (not generic "Processed")
+
+### T2.2 Live Price in get_quote / price_feed Simulate
+- [ ] Add `get_quote` node, Simulate → log shows real price (not `$0.24 (cached)`)
+- [ ] If CoinGecko API fails, graceful fallback to cached message
+
+### T2.3 delay in executeDirect
+- [ ] Add `delay` node (5000ms), Execute in Direct mode
+- [ ] Execution pauses ~5s at delay node (visible in log timing)
+- [ ] Delay capped at 30s maximum
+
+### T2.4 executeAtomic Topological Order
+- [ ] Create graph: A → B → C, Execute Atomic
+- [ ] Verify payments collected in edge-order, not array-insertion order
+
+### T2.5 executeAtomic Address Validation
+- [ ] Template `tpl_treasury_dist` with empty addresses → payments array is empty (not invalid txns)
+- [ ] Valid addresses → payments collected normally
+
+### T2.6 filter_condition Normalization
+- [ ] Load saved workflow with `filter_condition` type → rendered as `filter` with correct icon/color
+
+## Phase 3: Template Data Fixes
+
+### T3.1 tpl_send_algo
+- [ ] Load template → `receiver` is empty string (not `ALGO_ADDRESS_PLACEHOLDER`)
+- [ ] Simulation works; execution skips payment with "no receiver set" log
+
+### T3.2 tpl_asa_transfer
+- [ ] `asset_id` field shows empty or placeholder (not hardcoded `0`)
+- [ ] User must fill in asset_id before execution succeeds
+
+### T3.3 tpl_treasury_dist
+- [ ] All three payment receivers are empty strings (not `TEAM_LEAD_ADDRESS` etc.)
+- [ ] Labels indicate role (Team Lead, Dev Fund, Reserve)
+
+### T3.4 tpl_tinyman_swap_receiver
+- [ ] Filter condition is `==` (not `eq`)
+- [ ] Workflow doesn't break at filter step
+
+### T3.5 tpl_scheduled_payment
+- [ ] Filter condition is `>=` (not `gte`)
+- [ ] Receiver is empty string (not `PAYEE_ADDRESS`)
+
+### T3.6 tpl_price_alert
+- [ ] Filter condition is `>` (not `gt`)
+- [ ] After price_feed runs, filter can read `sharedContext.price`
+
+### T3.7 tpl_webhook_action
+- [ ] send_payment uses `amount` / `receiver` keys (not `amount_from` / `receiver_from`)
+
+### T3.8 Template Category Icons
+- [ ] Trading category shows icon (not empty string)
+- [ ] Automation category shows icon (not empty string)
+
+## Phase 4: AI & Server Alignment
+
+### T4.1 AI Prompt Missing Types
+- [ ] `prompts.ts` lists `ai_trigger`, `write_to_spreadsheet`, `discord_notify`
+- [ ] AI prompt: "Build a workflow that logs to spreadsheet" → generates `write_to_spreadsheet` node
+
+### T4.2 Server Runner Expansion
+- [ ] `runner.ts` handles `filter` with full operator support
+- [ ] `runner.ts` handles `get_quote` (CoinGecko fetch or mock)
+- [ ] `runner.ts` handles `http_request` (basic fetch)
+- [ ] `runner.ts` uses edge-based topological sort (not position.x)
+
+### T4.3 Dead Routes
+- [ ] `agent.routes.ts` mounted at `/api/agent`
+- [ ] `execute.routes.ts` mounted at `/api/execute`
+- [ ] `webhook.routes.ts` left unmounted (Telegram uses long polling)
+
+## Phase 5: Polish
+
+### T5.1 Execution Mode Selector
+- [ ] UI shows 3 options: Direct / Atomic / Contract
+- [ ] Selecting "Contract" sets `executionMode` to `'contract'`
+- [ ] `executeViaContract` is reachable
+
+### T5.2 isReal Semantics
+- [ ] `browser_notification` is `isReal: false` (no "ON-CHAIN" badge)
+- [ ] `write_to_spreadsheet` is `isReal: false`
+
+### T5.3 Trigger Target Handles
+- [ ] Trigger nodes (timer_loop, wallet_event, etc.) hide left (target) handle
+- [ ] Non-trigger nodes still show both handles
+
+### T5.4 Template Re-apply
+- [ ] Load "Send ALGO" template → canvas shows it
+- [ ] Click "Send ALGO" template again → canvas refreshes (does not stay stale)
+
+## Regression Checklist (run after all phases)
+
+- [ ] All 10 marketplace templates load without errors
+- [ ] All 19 node types render correctly on canvas
+- [ ] Simulate runs through all node types without crash
+- [ ] Direct execution with real wallet completes for send_payment
+- [ ] Atomic execution groups multiple payments
+- [ ] AI generates valid workflows with correct categories
+- [ ] Saved workflows load with correct categories and icons

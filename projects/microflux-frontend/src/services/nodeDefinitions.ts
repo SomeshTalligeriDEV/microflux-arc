@@ -138,7 +138,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     description: 'Log data directly to an Excel/CSV file',
     category: 'action',
     icon: '▤',
-    isReal: true,
+    isReal: false,
     color: CATEGORY_COLORS.action,
     defaultConfig: { mapToColumns: true },
   },
@@ -214,7 +214,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     description: 'Show browser notification',
     category: 'notification',
     icon: '•',
-    isReal: true,
+    isReal: false,
     color: CATEGORY_COLORS.notification,
     defaultConfig: { title: '', body: '' },
   },
@@ -241,6 +241,15 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
 ];
 
 // ── Helpers ──────────────────────────────────
+
+const NODE_TYPE_TO_CATEGORY: Record<string, NodeCategory> = Object.fromEntries(
+  NODE_DEFINITIONS.map((def) => [def.type, def.category]),
+);
+NODE_TYPE_TO_CATEGORY['filter_condition'] = 'logic';
+
+export function inferCategory(type: string): NodeCategory {
+  return NODE_TYPE_TO_CATEGORY[type] ?? 'logic';
+}
 
 export function getNodesByCategory(category: NodeCategory): NodeDefinition[] {
   return NODE_DEFINITIONS.filter((n) => n.category === category);

@@ -107,11 +107,13 @@ const MicrofluxNode: React.FC<NodeProps<CanvasNodeData>> = ({ data, selected }) 
       className={`mfx-node mfx-node--${data.category} ${selected ? 'mfx-node--selected' : ''}`}
       style={{ '--node-color': data.color } as React.CSSProperties}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="mfx-handle mfx-handle--target"
-      />
+      {!isTrigger && (
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="mfx-handle mfx-handle--target"
+        />
+      )}
 
       <div className="mfx-node__color-strip" />
 
@@ -205,7 +207,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const [contractState, setContractState] = useState<ContractState | null>(null);
   const [executionSuccess, setExecutionSuccess] = useState(false);
   const [lastTxId, setLastTxId] = useState<string | null>(null);
-  const [useSmartContract, setUseSmartContract] = useState(true);
+  const [useSmartContract, setUseSmartContract] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployedAppId, setDeployedAppId] = useState<number>(0);
   const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(workflowId ?? null);
@@ -225,10 +227,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     }
   }, []);
 
-  // Sync execution mode from toggle
+  // Sync execution mode from legacy toggle (kept for backward compat)
   useEffect(() => {
-    setExecutionMode(useSmartContract ? 'atomic' : 'direct');
-  }, [useSmartContract]);
+    if (useSmartContract && executionMode === 'direct') {
+      setExecutionMode('atomic');
+    }
+  }, [useSmartContract, executionMode]);
 
   // Derive selectedNode directly for render (instant update)
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
@@ -238,11 +242,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   // Load workflow generated inside right-panel AI tab directly into this canvas
   const handleLoadWorkflowFromAi = useCallback((aiNodes: AINode[], aiEdges: AIEdge[]) => {
     const canvasNodes: CanvasNodeData[] = aiNodes.map((n) => {
-      const def = NODE_DEFINITIONS.find((d) => d.type === n.type);
+      const type = n.type === 'filter_condition' ? 'filter' : n.type;
+      const def = NODE_DEFINITIONS.find((d) => d.type === type);
       const rawData = (n as any)?.data && typeof (n as any).data === 'object' ? (n as any).data : {};
       return {
         id: n.id,
-        type: n.type,
+        type,
         label: String(rawData?.label ?? n.label),
         category: n.category as NodeCategory,
         config: (rawData?.config ?? n.config ?? {}) as Record<string, unknown>,
@@ -266,11 +271,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   useEffect(() => {
     if (initialNodes && initialNodes.length > 0) {
       const canvasNodes: CanvasNodeData[] = initialNodes.map((n) => {
-        const def = NODE_DEFINITIONS.find((d) => d.type === n.type);
+        const type = n.type === 'filter_condition' ? 'filter' : n.type;
+        const def = NODE_DEFINITIONS.find((d) => d.type === type);
         const rawData = (n as any)?.data && typeof (n as any).data === 'object' ? (n as any).data : {};
         return {
           id: n.id,
-          type: n.type,
+          type,
           label: String(rawData?.label ?? n.label),
           category: n.category as NodeCategory,
           config: (rawData?.config ?? n.config ?? {}) as Record<string, unknown>,
@@ -589,13 +595,22 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         case 'webhook_trigger':
           logs.push(`${node.label}: Webhook received`);
           break;
+        case 'telegram_command':
+          logs.push(`[TELEGRAM] ${node.label}: Command trigger received (${node.config.command ?? '/start'})`);
+          break;
         case 'ai_trigger':
           logs.push(`[OK] ${node.label}: LLM Intent evaluated via ${node.config.provider}`);
           break;
         case 'get_quote':
-        case 'price_feed':
-          logs.push(`[PRICE] ${node.label}: ALGO = $0.24 (cached)`);
+        case 'price_feed': {
+          try {
+            const quote = await algoToUsd(1);
+            logs.push(`[PRICE] ${node.label}: ALGO = ${quote.formatted}`);
+          } catch {
+            logs.push(`[PRICE] ${node.label}: ALGO = $0.24 (cached — API unavailable)`);
+          }
           break;
+        }
         case 'app_call':
           logs.push(`[APP] ${node.label}: App call prepared`);
           break;
@@ -664,8 +679,14 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     const sortedNodes = getExecutionOrder();
     const sharedContext: Record<string, any> = { status: 'unknown', amount: 0, txId: '' };
     const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+    const skipSet = new Set<string>();
 
     for (const node of sortedNodes) {
+      if (skipSet.has(node.id)) {
+        logs.push(`[SKIP] ${node.label}: Skipped (filter branch)`);
+        setExecutionLog([...logs]);
+        continue;
+      }
       await new Promise((r) => setTimeout(r, 300));
 
       if (node.type === 'send_payment' && node.isReal) {
@@ -780,7 +801,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         }
         setExecutionLog([...logs]);
 
-      } else if (node.type === 'write_to_spreadsheet' && node.isReal) {
+      } else if (node.type === 'write_to_spreadsheet') {
         logs.push(`[SHEETS] ${node.label}: Sent /sheets/write ping...`);
         setExecutionLog([...logs]);
 
@@ -815,32 +836,44 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         logs.push(`[LOGIC] ${node.label}: Evaluating if ${fieldName} ${condition} "${expectedValue}"...`);
         setExecutionLog([...logs]);
 
-        // Evaluate dynamic condition against shared memory
-        let isTrue = false;
         const actualValue = sharedContext[fieldName === 'payment_status' ? 'status' : fieldName];
+        const actual = String(actualValue ?? '');
+        const expected = String(expectedValue);
+        const numActual = Number(actualValue);
+        const numExpected = Number(expectedValue);
         
-        if (condition === '==') isTrue = (String(actualValue) === expectedValue);
-        else if (condition === '!=') isTrue = (String(actualValue) !== expectedValue);
-        else if (condition === '>') isTrue = (Number(actualValue) > Number(expectedValue));
-        else if (condition === '<') isTrue = (Number(actualValue) < Number(expectedValue));
+        let isTrue = false;
+        switch (condition) {
+          case '==': case 'eq':   isTrue = (actual === expected); break;
+          case '!=': case 'neq':  isTrue = (actual !== expected); break;
+          case '>':  case 'gt':   isTrue = (numActual > numExpected); break;
+          case '>=': case 'gte':  isTrue = (numActual >= numExpected); break;
+          case '<':  case 'lt':   isTrue = (numActual < numExpected); break;
+          case '<=': case 'lte':  isTrue = (numActual <= numExpected); break;
+          default:
+            logs.push(`[LOGIC] Unknown operator "${condition}", treating as false`);
+        }
 
         if (!isTrue) {
-          logs.push(`[LOGIC] Condition Evaluated False! Routing to fallback...`);
-          // Search for a telegram node in the graph and "execute" it
-          const telegramNode = sortedNodes.find(n => n.type === 'telegram_notify');
-          if (telegramNode) {
-            logs.push(`[TELEGRAM] 🚨 Alert sent to Chat ID ${telegramNode.config.chatId || 'Global'}: "Transaction Failed!"`);
-          } else {
-            logs.push(`[TELEGRAM] Cannot send alert. No Telegram node is present on the canvas!`);
-          }
+          logs.push(`[LOGIC] Condition false — skipping downstream nodes on this branch`);
+          const downstream = new Set<string>();
+          const collectDownstream = (sourceId: string) => {
+            for (const e of edges) {
+              if (e.source === sourceId && !downstream.has(e.target)) {
+                downstream.add(e.target);
+                collectDownstream(e.target);
+              }
+            }
+          };
+          collectDownstream(node.id);
+          for (const id of downstream) skipSet.add(id);
           setExecutionLog([...logs]);
-          break; // Stop workflow from hitting Spreadsheet!
         } else {
-          logs.push(`[LOGIC] Condition Evaluated True! Proceeding down primary path...`);
+          logs.push(`[LOGIC] Condition true — proceeding down primary path`);
           setExecutionLog([...logs]);
         }
 
-      } else if (node.type === 'browser_notification' && node.isReal) {
+      } else if (node.type === 'browser_notification') {
         if (Notification.permission === 'granted') {
           new Notification(node.config.title as string, { body: node.config.body as string });
           logs.push(`[NOTIFY] ${node.label}: Notification sent`);
@@ -869,6 +902,9 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           );
 
           if (swapResult.success) {
+            sharedContext.swap_status = 'success';
+            sharedContext.status = 'success';
+            sharedContext.swap_txId = swapResult.txId ?? '';
             logs.push(`[OK] ${node.label}: Swap confirmed`);
             if (swapResult.quote) {
               logs.push(`   Output: ~${formatAssetAmount(swapResult.quote.expectedAmountOut, toId)}`);
@@ -878,13 +914,36 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
               logs.push(`   ${getExplorerTxUrl(swapResult.txId, networkName)}`);
             }
           } else {
+            sharedContext.swap_status = 'failed';
+            sharedContext.status = 'failed';
             logs.push(`[FAIL] ${node.label}: ${swapResult.error}`);
           }
         } catch (swapErr) {
+          sharedContext.swap_status = 'failed';
+          sharedContext.status = 'failed';
           const msg = swapErr instanceof Error ? swapErr.message : 'Tinyman swap failed';
           logs.push(`[WARN] ${node.label}: Swap unavailable — ${msg}`);
           logs.push(`   Workflow continues (swap node skipped)`);
         }
+        setExecutionLog([...logs]);
+
+      } else if (node.type === 'get_quote' || node.type === 'price_feed') {
+        try {
+          const quote = await algoToUsd(1);
+          sharedContext.price = quote.usd;
+          logs.push(`[PRICE] ${node.label}: ALGO = ${quote.formatted}`);
+        } catch {
+          sharedContext.price = 0.24;
+          logs.push(`[PRICE] ${node.label}: ALGO = $0.24 (cached — API unavailable)`);
+        }
+        setExecutionLog([...logs]);
+
+      } else if (node.type === 'delay') {
+        const duration = Math.min(Number(node.config.duration ?? 5000), 30000);
+        logs.push(`[WAIT] ${node.label}: Waiting ${duration / 1000}s...`);
+        setExecutionLog([...logs]);
+        await new Promise((r) => setTimeout(r, duration));
+        logs.push(`[OK] ${node.label}: Delay complete`);
         setExecutionLog([...logs]);
 
       } else {
@@ -892,7 +951,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         setExecutionLog([...logs]);
       }
     }
-  }, [nodes, activeAddress, transactionSigner, networkName]);
+  }, [nodes, edges, activeAddress, transactionSigner, networkName]);
 
   // MODE B: Execute via WorkflowExecutor smart contract
   const executeViaContract = useCallback(async (logs: string[]) => {
@@ -949,24 +1008,33 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
 
     const payments: Array<{ receiver: string; amountMicroAlgos: number }> = [];
     const asaTransfers: Array<{ receiver: string; assetId: number; amount: number }> = [];
+    const sortedNodes = getExecutionOrder();
 
-    for (const node of nodes) {
+    for (const node of sortedNodes) {
       if (node.type === 'send_payment' && node.isReal) {
         const receiver = String(node.config.receiver || '');
         const amount = normalizeAmountToMicroAlgos(
           node.config.amount,
           (node.config as any).amountUnit ?? (node.config as any).unit,
         );
-        if (receiver && receiver !== 'ALGO_ADDRESS_PLACEHOLDER' && amount > 0) {
-          payments.push({ receiver, amountMicroAlgos: amount });
+        if (!receiver || receiver === 'ALGO_ADDRESS_PLACEHOLDER' || amount <= 0) continue;
+        try { algosdk.decodeAddress(receiver); } catch {
+          logs.push(`[SKIP] ${node.label}: Invalid receiver address — excluded from group`);
+          setExecutionLog([...logs]);
+          continue;
         }
+        payments.push({ receiver, amountMicroAlgos: amount });
       } else if (node.type === 'asa_transfer' && node.isReal) {
         const receiver = String(node.config.receiver || '');
         const assetId = Number(node.config.asset_id) || 0;
         const amount = Number(node.config.amount) || 0;
-        if (receiver && assetId && amount) {
-          asaTransfers.push({ receiver, assetId, amount });
+        if (!receiver || !assetId || !amount) continue;
+        try { algosdk.decodeAddress(receiver); } catch {
+          logs.push(`[SKIP] ${node.label}: Invalid receiver address — excluded from group`);
+          setExecutionLog([...logs]);
+          continue;
         }
+        asaTransfers.push({ receiver, assetId, amount });
       }
     }
 
@@ -1007,7 +1075,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       if (hasAppCallNode) logs.push(`   ${getAppExplorerUrl(appId, networkName)}`);
 
       // Post-execution: check if the graph wanted to write to spreadsheet!
-      const hasSpreadsheetNode = nodes.some((n) => n.type === 'write_to_spreadsheet' && n.isReal);
+      const hasSpreadsheetNode = nodes.some((n) => n.type === 'write_to_spreadsheet');
       if (hasSpreadsheetNode) {
         logs.push(`[SHEETS] Writing successful atomic transaction to spreadsheet...`);
         setExecutionLog([...logs]);
@@ -1040,7 +1108,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       logs.push(`[FAIL] Atomic execution failed: ${result.error}`);
     }
     setExecutionLog([...logs]);
-  }, [nodes, activeAddress, transactionSigner, networkName]);
+  }, [nodes, edges, activeAddress, transactionSigner, networkName, getExecutionOrder]);
 
   // Master execution handler
   const executeWorkflow = useCallback(async () => {
@@ -1755,7 +1823,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                 <div className="sim-row"><span className="sim-label">Nodes</span><span className="sim-value">{nodes.length}</span></div>
                 <div className="sim-row"><span className="sim-label">Connections</span><span className="sim-value">{edges.length}</span></div>
                 <div className="sim-row"><span className="sim-label">On-Chain Txns</span><span className="sim-value" style={{ color: 'var(--color-accent)', fontWeight: 700 }}>{nodes.filter((n) => n.isReal).length}</span></div>
-                <div className="sim-row"><span className="sim-label">Execution Type</span><span className="sim-value" style={{ fontWeight: 700, color: 'var(--color-info)' }}>{useSmartContract ? 'Atomic' : 'Direct'}</span></div>
+                <div className="sim-row"><span className="sim-label">Execution Type</span><span className="sim-value" style={{ fontWeight: 700, color: 'var(--color-info)', textTransform: 'uppercase' }}>{executionMode}</span></div>
                 {usdQuote && <div className="sim-row"><span className="sim-label">Est. Value</span><span className="sim-value sim-usd">{usdQuote}</span></div>}
               </div>
             </div>
@@ -1775,13 +1843,27 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
             >
               {isSaving ? 'SAVING...' : currentWorkflowId ? 'UPDATE WORKFLOW' : 'SAVE WORKFLOW'}
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', marginBottom: '10px', cursor: 'pointer' }} onClick={() => setUseSmartContract(!useSmartContract)}>
-              <div style={{ width: '32px', height: '18px', borderRadius: '9px', background: useSmartContract ? 'var(--color-accent)' : 'var(--color-bg-tertiary)', position: 'relative', transition: 'background 0.2s', flexShrink: 0, border: `1px solid ${useSmartContract ? 'var(--color-accent)' : 'var(--color-border)'}` }}>
-                <div style={{ width: '14px', height: '14px', borderRadius: '50%', background: 'white', position: 'absolute', top: '1px', left: useSmartContract ? '16px' : '1px', transition: 'left 0.2s' }} />
+            <div style={{ padding: '8px 12px', background: 'var(--color-bg-input)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', marginBottom: '10px' }}>
+              <div className="text-xs" style={{ fontWeight: 600, marginBottom: '6px' }}>Execution Mode</div>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {(['direct', 'atomic', 'contract'] as ExecutionMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    className={`btn btn-sm ${executionMode === mode ? 'btn-accent' : 'btn-ghost'}`}
+                    style={{ flex: 1, fontSize: '0.6rem', padding: '4px 6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}
+                    onClick={() => {
+                      setExecutionMode(mode);
+                      setUseSmartContract(mode !== 'direct');
+                    }}
+                  >
+                    {mode}
+                  </button>
+                ))}
               </div>
-              <div>
-                <div className="text-xs" style={{ fontWeight: 600 }}>Use Smart Contract</div>
-                <div className="text-xs text-muted" style={{ fontSize: '0.6rem' }}>{useSmartContract ? 'Atomic group + App call (verifiable)' : 'Direct L1 transactions'}</div>
+              <div className="text-xs text-muted" style={{ fontSize: '0.55rem', marginTop: '4px' }}>
+                {executionMode === 'direct' && 'Sequential L1 transactions signed individually'}
+                {executionMode === 'atomic' && 'Atomic group — all-or-nothing batch execution'}
+                {executionMode === 'contract' && 'Execute via WorkflowExecutor smart contract'}
               </div>
             </div>
             <div className="sim-panel" style={{ marginBottom: '12px' }}>

@@ -9,6 +9,7 @@ import AIPage from './components/AIPage';
 import MarketDataPanel from './components/MarketDataPanel';
 import ConnectWallet from './components/ConnectWallet';
 import type { AINode, AIEdge } from './services/aiService';
+import { inferCategory } from './services/nodeDefinitions';
 import { fetchAccountBalance } from './services/walletService';
 import { getAlgodConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs';
 import { api, type Workflow } from './services/api';
@@ -105,8 +106,8 @@ const Home: React.FC = () => {
   }, []);
 
   const handleLoadWorkflow = useCallback((nodes: AINode[], edges: AIEdge[], name: string, workflowId: string | null = null) => {
-    setWorkflowNodes(nodes);
-    setWorkflowEdges(edges);
+    setWorkflowNodes([...nodes]);
+    setWorkflowEdges([...edges]);
     setWorkflowName(name);
     setSelectedWorkflowId(workflowId);
     navigate('/builder');
@@ -114,17 +115,19 @@ const Home: React.FC = () => {
 
   const normalizeLoadedNode = useCallback((node: any, index: number): AINode => {
     const type = String(node?.type ?? 'debug_log');
-    const category = typeof node?.category === 'string'
+    const rawCategory = typeof node?.category === 'string'
       ? String(node.category).toLowerCase()
-      : 'logic';
+      : '';
+    const VALID_CATEGORIES = ['trigger', 'action', 'logic', 'defi', 'notification'];
+    const category = VALID_CATEGORIES.includes(rawCategory)
+      ? rawCategory
+      : inferCategory(type);
 
     return {
       id: String(node?.id ?? `node_${index + 1}`),
       type,
       label: String(node?.label ?? type.replace(/_/g, ' ')),
-      category: (['trigger', 'action', 'logic', 'defi', 'notification'].includes(category)
-        ? category
-        : 'logic') as AINode['category'],
+      category: category as AINode['category'],
       config: (node?.config ?? node?.params ?? {}) as Record<string, unknown>,
       position: {
         x: Number(node?.position?.x ?? node?.x ?? index * 280),
