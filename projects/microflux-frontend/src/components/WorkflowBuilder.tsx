@@ -20,6 +20,7 @@ import ReactFlow, {
   applyNodeChanges,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import 'reactflow/dist/base.css';
 import {
   NODE_DEFINITIONS,
   getNodesByCategory,
@@ -87,34 +88,47 @@ interface PaletteDragPreview {
 const MicrofluxNode: React.FC<NodeProps<CanvasNodeData>> = ({ data, selected }) => {
   const isTrigger = data.category === 'trigger';
 
+  const meta = useMemo(() => {
+    if (data.type === 'send_payment' && data.config.amount)
+      return `${(data.config.amount as number) / 1_000_000} ALGO`;
+    if (data.type === 'asa_transfer' && data.config.asset_id)
+      return `ASA #${data.config.asset_id}`;
+    if (data.type === 'tinyman_swap')
+      return `${TINYMAN_KNOWN_ASSETS[Number(data.config.fromAssetId)]?.unitName ?? `#${data.config.fromAssetId}`} → ${TINYMAN_KNOWN_ASSETS[Number(data.config.toAssetId)]?.unitName ?? `#${data.config.toAssetId}`}`;
+    if (data.type === 'delay' && data.config.duration)
+      return `${Number(data.config.duration) / 1000}s`;
+    if (data.type === 'get_quote' || data.type === 'price_feed')
+      return `${data.config.token ?? 'ALGO'}/${data.config.vs ?? 'USD'}`;
+    return null;
+  }, [data.type, data.config]);
+
   return (
-    <div className={`microflux-node microflux-node-${data.category} ${selected ? 'is-selected' : ''}`}>
-      {!isTrigger && (
-        <Handle
-          type="target"
-          position={Position.Left}
-          className="microflux-handle microflux-handle-input"
-        />
-      )}
+    <div
+      className={`mfx-node mfx-node--${data.category} ${selected ? 'mfx-node--selected' : ''}`}
+      style={{ '--node-color': data.color } as React.CSSProperties}
+    >
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="mfx-handle mfx-handle--target"
+      />
 
-      <div className="microflux-node__header" style={{ borderLeftColor: data.color }}>
-        <span className="microflux-node__icon">{data.icon}</span>
-        <span className="microflux-node__title">{data.label}</span>
-      </div>
+      <div className="mfx-node__color-strip" />
 
-      <div className="microflux-node__body">
-        <div className="microflux-node__type">{data.type}</div>
-        {data.type === 'send_payment' && (
-          <div className="microflux-node__meta">{(data.config.amount as number) / 1000000} ALGO</div>
-        )}
-        {data.type === 'asa_transfer' && (
-          <div className="microflux-node__meta">ASA #{String(data.config.asset_id ?? 0)}</div>
-        )}
-        {data.type === 'tinyman_swap' && (
-          <div className="microflux-node__meta">
-            {TINYMAN_KNOWN_ASSETS[Number(data.config.fromAssetId)]?.unitName ?? `#${data.config.fromAssetId}`}
-            {' → '}
-            {TINYMAN_KNOWN_ASSETS[Number(data.config.toAssetId)]?.unitName ?? `#${data.config.toAssetId}`}
+      <div className="mfx-node__content">
+        <div className="mfx-node__header">
+          <div className="mfx-node__icon-badge">
+            {data.icon}
+          </div>
+          <div className="mfx-node__titles">
+            <div className="mfx-node__name">{data.label}</div>
+            <div className="mfx-node__subtitle">{data.type.replace(/_/g, ' ')}</div>
+          </div>
+        </div>
+
+        {meta && (
+          <div className="mfx-node__meta">
+            {meta}
           </div>
         )}
       </div>
@@ -122,7 +136,7 @@ const MicrofluxNode: React.FC<NodeProps<CanvasNodeData>> = ({ data, selected }) 
       <Handle
         type="source"
         position={Position.Right}
-        className="microflux-handle microflux-handle-output"
+        className="mfx-handle mfx-handle--source"
       />
     </div>
   );
@@ -150,8 +164,8 @@ const toFlowEdge = (edge: CanvasEdgeData): Edge => ({
   target: edge.target,
   type: 'smoothstep',
   animated: true,
-  style: { stroke: 'rgba(56, 189, 248, 0.55)', strokeWidth: 2 },
-  markerEnd: { type: MarkerType.ArrowClosed, color: 'rgba(56, 189, 248, 0.55)' },
+  style: { stroke: 'rgba(132, 204, 255, 0.5)', strokeWidth: 2.5 },
+  markerEnd: { type: MarkerType.ArrowClosed, color: 'rgba(132, 204, 255, 0.5)', width: 16, height: 16 },
 });
 
 interface WorkflowBuilderProps {
@@ -181,9 +195,6 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const [nodes, setNodes] = useState<CanvasNodeData[]>([]);
   const [edges, setEdges] = useState<CanvasEdgeData[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
   const [simResults, setSimResults] = useState<string[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -198,7 +209,6 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const [deployedAppId, setDeployedAppId] = useState<number>(0);
   const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(workflowId ?? null);
   const [isSaving, setIsSaving] = useState(false);
-  const [viewportInitialized, setViewportInitialized] = useState(false);
   const [paletteDragPreview, setPaletteDragPreview] = useState<PaletteDragPreview | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const flowInstanceRef = useRef<ReactFlowInstance<CanvasNodeData, Edge> | null>(null);
@@ -334,17 +344,13 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
 
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
     setNodes((currentNodes) => {
-      const updated = applyNodeChanges(changes, currentNodes.map(toFlowNode));
-      return updated.map((node) => {
-        // Safe position to prevent disappearing node bug when shaken
-        const safeX = typeof node.position.x === 'number' && !isNaN(node.position.x) ? node.position.x : 0;
-        const safeY = typeof node.position.y === 'number' && !isNaN(node.position.y) ? node.position.y : 0;
-        
-        return {
-          ...(node.data as CanvasNodeData),
-          id: node.id,
-          position: { x: safeX, y: safeY },
-        };
+      const flowResult = applyNodeChanges(changes, currentNodes.map(toFlowNode));
+      return flowResult.map((flowNode) => {
+        const existing = currentNodes.find((n) => n.id === flowNode.id);
+        if (existing) {
+          return { ...existing, position: flowNode.position };
+        }
+        return flowNode.data as CanvasNodeData;
       });
     });
   }, []);
@@ -382,63 +388,17 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     });
   }, []);
 
-  const applyZoomAtClientPoint = useCallback((clientX: number, clientY: number, zoomDirection: number) => {
-    const instance = flowInstanceRef.current;
-    const container = canvasContainerRef.current;
-    if (!instance || !container) return;
-
-    const rect = container.getBoundingClientRect();
-    const currentZoom = instance.getZoom();
-    const factor = zoomDirection > 0 ? 1.1 : 0.9;
-    const nextZoom = Math.max(0.2, Math.min(2, currentZoom * factor));
-    if (nextZoom === currentZoom) return;
-
-    const flowPoint = instance.screenToFlowPosition({ x: clientX, y: clientY });
-    const nextX = clientX - rect.left - flowPoint.x * nextZoom;
-    const nextY = clientY - rect.top - flowPoint.y * nextZoom;
-
-    instance.setViewport({ x: nextX, y: nextY, zoom: nextZoom }, { duration: 80 });
-  }, []);
-
   const handleZoomIn = useCallback(() => {
-    const container = canvasContainerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    applyZoomAtClientPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, 1);
-  }, [applyZoomAtClientPoint]);
+    flowInstanceRef.current?.zoomIn({ duration: 200 });
+  }, []);
 
   const handleZoomOut = useCallback(() => {
-    const container = canvasContainerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    applyZoomAtClientPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, -1);
-  }, [applyZoomAtClientPoint]);
-
-  const handleResetView = useCallback(() => {
-    const instance = flowInstanceRef.current;
-    if (!instance) return;
-    instance.setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 120 });
+    flowInstanceRef.current?.zoomOut({ duration: 200 });
   }, []);
 
-  useEffect(() => {
-    const container = canvasContainerRef.current;
-    if (!container) return;
-
-    const onWheel = (event: WheelEvent) => {
-      const target = event.target as HTMLElement;
-      if (!container.contains(target)) return;
-      if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      applyZoomAtClientPoint(event.clientX, event.clientY, event.deltaY < 0 ? 1 : -1);
-    };
-
-    container.addEventListener('wheel', onWheel, { passive: false });
-    return () => {
-      container.removeEventListener('wheel', onWheel);
-    };
-  }, [applyZoomAtClientPoint]);
+  const handleResetView = useCallback(() => {
+    flowInstanceRef.current?.fitView({ padding: 0.3, duration: 300 });
+  }, []);
 
   useEffect(() => {
     const onMouseMove = (event: MouseEvent) => {
@@ -1239,7 +1199,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
             {workflowName || 'NODE PALETTE'}
           </div>
           <div className="text-xs text-muted" style={{ marginTop: '2px' }}>
-            Click to add nodes to canvas
+            Drag or click to add blocks
           </div>
         </div>
 
@@ -1295,7 +1255,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         ref={canvasContainerRef}
       >
         <ReactFlow
-          className="microflux-reactflow"
+          className="mfx-canvas"
           nodes={flowNodes}
           edges={flowEdges}
           nodeTypes={nodeTypes}
@@ -1312,155 +1272,91 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           }}
           onInit={(instance) => { flowInstanceRef.current = instance; }}
           defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-          connectOnClick={true}
-          connectionLineType={ConnectionLineType.Bezier}
-          connectionLineStyle={{ stroke: 'rgba(56, 189, 248, 0.55)', strokeWidth: 2 }}
+          connectOnClick
+          connectionLineType={ConnectionLineType.SmoothStep}
+          connectionLineStyle={{ stroke: 'rgba(132, 204, 255, 0.5)', strokeWidth: 2.5 }}
           fitView
-          fitViewOptions={{ padding: 0.2 }}
+          fitViewOptions={{ padding: 0.3, maxZoom: 1.2 }}
           snapToGrid
-          snapGrid={[20, 20]}
+          snapGrid={[16, 16]}
           deleteKeyCode={null}
-          minZoom={0.2}
-          maxZoom={2}
-          translateExtent={[[-5000, -5000], [5000, 5000]]}
-          nodeExtent={[[-5000, -5000], [5000, 5000]]}
-          zoomOnScroll={false}
+          minZoom={0.1}
+          maxZoom={4}
+          zoomOnScroll
           zoomOnPinch
           zoomOnDoubleClick={false}
-          panOnDrag={[1, 2]}
+          panOnDrag
+          panOnScroll={false}
+          selectionOnDrag={false}
+          preventScrolling
           defaultEdgeOptions={{
             type: 'smoothstep',
             animated: true,
-            style: { stroke: 'rgba(56, 189, 248, 0.55)', strokeWidth: 2 },
-            markerEnd: { type: MarkerType.ArrowClosed, color: 'rgba(56, 189, 248, 0.55)' },
+            style: { stroke: 'rgba(132, 204, 255, 0.5)', strokeWidth: 2.5 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: 'rgba(132, 204, 255, 0.5)', width: 16, height: 16 },
           }}
           proOptions={{ hideAttribution: true }}
           nodesDraggable
           nodesConnectable
           elementsSelectable
-          panOnScroll={false}
-          selectionOnDrag={false}
-          preventScrolling
-          onMoveEnd={() => setViewportInitialized(true)}
         >
           <Background
             variant={BackgroundVariant.Dots}
-            gap={22}
-            size={1}
-            color="rgba(255, 255, 255, 0.06)"
+            gap={20}
+            size={1.2}
+            color="rgba(255, 255, 255, 0.07)"
           />
           <Controls
             showInteractive={false}
-            className="microflux-flow-controls"
+            position="bottom-left"
           />
           <MiniMap
             pannable
             zoomable
             nodeStrokeWidth={2}
-            nodeColor={(node) => node.data.color}
+            nodeColor={(node) => node.data?.color ?? '#666'}
             maskColor="rgba(6, 8, 12, 0.72)"
-            className="microflux-flow-minimap"
           />
         </ReactFlow>
 
         {nodes.length === 0 && (
-          <div className="empty-state microflux-flow-empty" style={{ height: '100%' }}>
-            <div className="empty-state-icon">⬡</div>
-            <div className="empty-state-title">Empty Canvas</div>
-            <div className="empty-state-desc">
-              Click nodes from the palette or use AI to generate a workflow
+          <div className="mfx-empty-canvas">
+            <div className="mfx-empty-canvas__icon">⬡</div>
+            <div className="mfx-empty-canvas__title">Empty Canvas</div>
+            <div className="mfx-empty-canvas__desc">
+              Drag nodes from the palette or use AI to generate a workflow
             </div>
           </div>
         )}
 
-        <div
-          style={{
-            position: 'absolute',
-            top: '12px',
-            right: '12px',
-            display: 'flex',
-            gap: '4px',
-            zIndex: 20,
-          }}
-        >
-          <button
-            type="button"
-            title="Zoom In"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={handleZoomIn}
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border)',
-              background: 'var(--color-bg-secondary)',
-              color: 'var(--color-text-secondary)',
-              cursor: 'pointer',
-              fontWeight: 700,
-              lineHeight: 1,
-            }}
-          >
-            +
-          </button>
-          <button
-            type="button"
-            title="Zoom Out"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={handleZoomOut}
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border)',
-              background: 'var(--color-bg-secondary)',
-              color: 'var(--color-text-secondary)',
-              cursor: 'pointer',
-              fontWeight: 700,
-              lineHeight: 1,
-            }}
-          >
-            −
-          </button>
-          <button
-            type="button"
-            title="Reset View"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={handleResetView}
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border)',
-              background: 'var(--color-bg-secondary)',
-              color: 'var(--color-text-secondary)',
-              cursor: 'pointer',
-              fontWeight: 700,
-              lineHeight: 1,
-            }}
-          >
-            ⟲
-          </button>
+        <div className="mfx-zoom-toolbar">
+          <button type="button" title="Zoom In" onClick={handleZoomIn}>+</button>
+          <button type="button" title="Zoom Out" onClick={handleZoomOut}>−</button>
+          <button type="button" title="Fit View" onClick={handleResetView}>⊞</button>
         </div>
 
         {paletteDragPreview && (
           <div
-            className="microflux-node"
+            className={`mfx-node mfx-node--${paletteDragPreview.def.category}`}
             style={{
               position: 'fixed',
               left: paletteDragPreview.clientX - 100,
               top: paletteDragPreview.clientY - 24,
-              minWidth: '200px',
-              opacity: 0.68,
+              opacity: 0.72,
               pointerEvents: 'none',
               zIndex: 999,
+              ['--node-color' as string]: paletteDragPreview.def.color,
             }}
           >
-            <div className="microflux-node__header" style={{ borderLeftColor: paletteDragPreview.def.color }}>
-              <span className="microflux-node__icon">{paletteDragPreview.def.icon}</span>
-              <span className="microflux-node__title">{paletteDragPreview.def.label}</span>
-            </div>
-            <div className="microflux-node__body">
-              <div className="microflux-node__type">{paletteDragPreview.def.type}</div>
+            <div className="mfx-node__color-strip" />
+            <div className="mfx-node__content">
+              <div className="mfx-node__header">
+                <div className="mfx-node__icon-badge">{paletteDragPreview.def.icon}</div>
+                <div className="mfx-node__titles">
+                  <div className="mfx-node__name">{paletteDragPreview.def.label}</div>
+                  <div className="mfx-node__subtitle">{paletteDragPreview.def.type.replace(/_/g, ' ')}</div>
+                </div>
+              </div>
             </div>
           </div>
         )}

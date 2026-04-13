@@ -762,56 +762,7 @@ textarea.input {
   min-height: calc(100vh - 60px);
 }
 
-.canvas-node {
-  position: absolute;
-  min-width: 200px;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  cursor: move;
-  user-select: none;
-  transition: box-shadow var(--transition-fast);
-}
-.canvas-node:hover,
-.canvas-node.selected {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 20px var(--color-accent-dim);
-}
-
-.canvas-node-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--color-border);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.canvas-node-body {
-  padding: 10px 12px;
-  font-size: var(--text-xs);
-  color: var(--color-text-secondary);
-}
-
-.canvas-node-port {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--color-border);
-  border: 2px solid var(--color-bg-secondary);
-  position: absolute;
-  cursor: crosshair;
-  transition: background var(--transition-fast);
-}
-.canvas-node-port:hover {
-  background: var(--color-accent);
-  box-shadow: 0 0 8px var(--color-accent);
-}
-.canvas-node-port.port-input { left: -5px; top: 50%; transform: translateY(-50%); }
-.canvas-node-port.port-output { right: -5px; top: 50%; transform: translateY(-50%); }
+/* Legacy canvas-node styles removed — React Flow + mfx-node classes are used */
 
 /* ── Right Panel ───────────────────────────── */
 .right-panel {
@@ -1328,263 +1279,298 @@ textarea.input {
   to { transform: rotate(360deg); }
 }
 
-/* ── React Flow Canvas ─────────────────────── */
+/* ── React Flow Canvas (n8n-style) ─────────── */
+
 .canvas-container-reactflow {
-  background:
-    radial-gradient(circle at 20% 20%, rgba(37, 99, 235, 0.12), transparent 30%),
-    radial-gradient(circle at 80% 15%, rgba(16, 185, 129, 0.08), transparent 26%),
-    linear-gradient(180deg, rgba(6, 8, 12, 0.98) 0%, rgba(9, 11, 16, 1) 100%);
+  background: #1a1a2e;
 }
 
-.microflux-reactflow {
-  background: transparent;
+.mfx-canvas {
+  background: transparent !important;
 }
 
-.microflux-reactflow .react-flow__renderer {
-  background:
-    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.03), transparent 40%),
-    linear-gradient(180deg, rgba(10, 12, 18, 0.75), rgba(6, 8, 12, 0.96));
-}
-
-.microflux-reactflow .react-flow__pane {
+.mfx-canvas .react-flow__pane {
   cursor: grab;
 }
 
-.microflux-reactflow .react-flow__pane:active {
+.mfx-canvas .react-flow__pane:active {
   cursor: grabbing;
 }
 
-.microflux-reactflow .react-flow__background {
-  opacity: 0.7;
+.mfx-canvas .react-flow__background {
+  opacity: 1;
 }
 
-.microflux-reactflow .react-flow__controls {
-  background: rgba(10, 12, 18, 0.92);
+.mfx-canvas .react-flow__renderer {
+  will-change: transform;
+}
+
+.mfx-canvas .react-flow__controls {
+  background: rgba(16, 16, 30, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   border-radius: 10px;
   overflow: hidden;
 }
 
-.microflux-reactflow .react-flow__controls-button {
+.mfx-canvas .react-flow__controls-button {
   background: transparent;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   color: var(--color-text-primary);
   fill: var(--color-text-primary);
+  width: 32px;
+  height: 32px;
 }
 
-.microflux-reactflow .react-flow__controls-button:hover {
-  background: rgba(37, 99, 235, 0.12);
+.mfx-canvas .react-flow__controls-button:hover {
+  background: rgba(132, 204, 255, 0.1);
 }
 
-.microflux-reactflow .react-flow__minimap {
-  background: rgba(10, 12, 18, 0.92);
+.mfx-canvas .react-flow__minimap {
+  background: rgba(16, 16, 30, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   border-radius: 10px;
   overflow: hidden;
 }
 
-.microflux-reactflow .react-flow__edge-path {
+.mfx-canvas .react-flow__edge-path {
   stroke-linecap: round;
 }
 
-.microflux-reactflow .react-flow__edge.animated path {
-  stroke-dasharray: 6 6;
-  animation: microflux-flow-dash 1.2s linear infinite;
+.mfx-canvas .react-flow__edge.animated path {
+  stroke-dasharray: 5 5;
+  animation: mfx-edge-flow 0.8s linear infinite;
 }
 
-@keyframes microflux-flow-dash {
-  to {
-    stroke-dashoffset: -12;
-  }
+@keyframes mfx-edge-flow {
+  to { stroke-dashoffset: -10; }
 }
 
-.microflux-reactflow .react-flow__handle {
-  width: 10px;
-  height: 10px;
-  background: var(--color-accent);
-  border: 2px solid rgba(10, 12, 18, 0.95);
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+.mfx-canvas .react-flow__connection-line {
+  stroke-linecap: round;
 }
 
-.microflux-reactflow .react-flow__handle-target {
-  left: -6px;
-}
+/* ── n8n-Style Node ─────────────────────────── */
 
-.microflux-reactflow .react-flow__handle-source {
-  right: -6px;
-}
-
-.microflux-node {
+.mfx-node {
   position: relative;
-  width: 238px;
-  min-height: 92px;
-  padding: 12px 12px 10px;
-  border-radius: 16px;
-  background:
-    linear-gradient(180deg, rgba(18, 21, 28, 0.96), rgba(11, 14, 19, 0.98));
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow:
-    0 14px 34px rgba(0, 0, 0, 0.38),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(10px);
-  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
-}
-
-.microflux-node:hover {
-  transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.14);
-  box-shadow:
-    0 18px 38px rgba(0, 0, 0, 0.42),
-    0 0 0 1px rgba(37, 99, 235, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-.microflux-node.is-selected {
-  border-color: rgba(56, 189, 248, 0.42);
-  box-shadow:
-    0 18px 42px rgba(0, 0, 0, 0.48),
-    0 0 0 1px rgba(56, 189, 248, 0.18),
-    0 0 26px rgba(56, 189, 248, 0.16);
-}
-
-.microflux-node::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 40%, rgba(255, 255, 255, 0.03));
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  pointer-events: none;
-}
-
-.microflux-node__header {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  padding-left: 10px;
-  border-left: 3px solid var(--color-accent);
+  width: 220px;
+  min-height: 64px;
+  border-radius: 8px;
+  background: #262640;
+  border: 1.5px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  overflow: visible;
+  will-change: transform;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  cursor: grab;
+  font-family: var(--font-sans);
 }
 
-.microflux-node__icon {
-  font-size: 14px;
-  line-height: 1;
+.mfx-node:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
 }
 
-.microflux-node__title {
+.mfx-node--selected {
+  border-color: rgba(132, 204, 255, 0.5) !important;
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.45),
+    0 0 0 2px rgba(132, 204, 255, 0.2) !important;
+}
+
+.mfx-node__color-strip {
+  width: 4px;
+  flex-shrink: 0;
+  background: var(--node-color, var(--color-accent));
+  border-radius: 8px 0 0 8px;
+}
+
+.mfx-node__content {
   flex: 1;
   min-width: 0;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mfx-node__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mfx-node__icon-badge {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1;
+  background: color-mix(in srgb, var(--node-color, var(--color-accent)) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--node-color, var(--color-accent)) 30%, transparent);
+  color: var(--node-color, var(--color-accent));
+}
+
+.mfx-node__titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.mfx-node__name {
   font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--color-text-primary);
+  font-weight: 600;
+  color: #eee;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.mfx-node__subtitle {
+  font-size: 0.62rem;
+  font-family: var(--font-mono);
+  color: rgba(255, 255, 255, 0.35);
   text-transform: uppercase;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+}
+
+.mfx-node__meta {
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  font-family: var(--font-mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.microflux-node__tag {
-  padding: 1px 5px !important;
-  font-size: 0.53rem !important;
+/* Category glow hints */
+.mfx-node--trigger { border-left: none; }
+.mfx-node--trigger .mfx-node__color-strip { background: var(--color-node-trigger); }
+
+.mfx-node--action .mfx-node__color-strip { background: var(--color-node-action); }
+.mfx-node--logic .mfx-node__color-strip { background: var(--color-node-logic); }
+.mfx-node--defi .mfx-node__color-strip { background: var(--color-node-defi); }
+.mfx-node--notification .mfx-node__color-strip { background: var(--color-node-notification); }
+
+/* ── n8n-Style Handles ──────────────────────── */
+
+.mfx-handle {
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 50% !important;
+  border: 2.5px solid rgba(132, 204, 255, 0.55) !important;
+  background: #1e1e3a !important;
+  transition: background 0.12s, border-color 0.12s, transform 0.12s, box-shadow 0.12s;
+  z-index: 10;
+  cursor: crosshair !important;
 }
 
-.microflux-node__body {
+.mfx-handle::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+}
+
+.mfx-handle:hover {
+  background: rgba(132, 204, 255, 0.4) !important;
+  border-color: rgba(132, 204, 255, 1) !important;
+  transform: scale(1.25);
+  box-shadow: 0 0 12px rgba(132, 204, 255, 0.4);
+}
+
+.mfx-handle--target {
+  left: -8px !important;
+}
+
+.mfx-handle--source {
+  right: -8px !important;
+}
+
+.react-flow__handle.connecting {
+  background: rgba(132, 204, 255, 0.7) !important;
+  border-color: rgba(132, 204, 255, 1) !important;
+  animation: mfx-pulse-handle 0.9s infinite;
+}
+
+@keyframes mfx-pulse-handle {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(132, 204, 255, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(132, 204, 255, 0); }
+}
+
+/* ── Zoom Toolbar ──────────────────────────── */
+
+.mfx-zoom-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 4px;
+  z-index: 20;
+}
+
+.mfx-zoom-toolbar button {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(16, 16, 30, 0.9);
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.mfx-zoom-toolbar button:hover {
+  background: rgba(132, 204, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* ── Empty Canvas ──────────────────────────── */
+
+.mfx-empty-canvas {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-left: 10px;
-}
-
-.microflux-node__type {
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  color: var(--color-text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.microflux-node__meta {
-  font-size: 0.72rem;
-  color: var(--color-text-secondary);
-}
-
-.microflux-node-trigger {
-  box-shadow:
-    0 14px 34px rgba(0, 0, 0, 0.38),
-    0 0 0 1px rgba(139, 92, 246, 0.10);
-}
-
-.microflux-node-action {
-  box-shadow:
-    0 14px 34px rgba(0, 0, 0, 0.38),
-    0 0 0 1px rgba(59, 130, 246, 0.08);
-}
-
-.microflux-node-logic {
-  box-shadow:
-    0 14px 34px rgba(0, 0, 0, 0.38),
-    0 0 0 1px rgba(245, 158, 11, 0.08);
-}
-
-.microflux-node-defi {
-  box-shadow:
-    0 14px 34px rgba(0, 0, 0, 0.38),
-    0 0 0 1px rgba(16, 185, 129, 0.08);
-}
-
-.microflux-node-notification {
-  box-shadow:
-    0 14px 34px rgba(0, 0, 0, 0.38),
-    0 0 0 1px rgba(236, 72, 153, 0.08);
-}
-
-.microflux-flow-empty {
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
+  z-index: 1;
 }
 
-/* ── ReactFlow Connection Handles ────────────── */
-
-.microflux-handle {
-  width: 12px !important;
-  height: 12px !important;
-  border-radius: 50% !important;
-  border: 2px solid rgba(56, 189, 248, 0.6) !important;
-  background: #0a0c10 !important;
-  transition: all 0.15s ease;
-  z-index: 10;
+.mfx-empty-canvas__icon {
+  font-size: 3rem;
+  opacity: 0.15;
+  margin-bottom: 12px;
 }
 
-.microflux-handle:hover {
-  background: rgba(56, 189, 248, 0.5) !important;
-  border-color: rgba(56, 189, 248, 1) !important;
-  transform: scale(1.3);
-  box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+.mfx-empty-canvas__title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.2);
+  margin-bottom: 6px;
 }
 
-.microflux-handle-input {
-  left: -6px !important;
-}
-
-.microflux-handle-output {
-  right: -6px !important;
-}
-
-/* Connecting state */
-.react-flow__handle.connecting {
-  background: rgba(56, 189, 248, 0.8) !important;
-  animation: pulse-handle 1s infinite;
-}
-
-@keyframes pulse-handle {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4); }
-  50% { box-shadow: 0 0 0 6px rgba(56, 189, 248, 0); }
+.mfx-empty-canvas__desc {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.12);
 }
 
 /* ── Input Focus Fix for Properties Panel ────── */
