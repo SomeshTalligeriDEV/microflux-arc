@@ -1351,6 +1351,14 @@ textarea.input {
   stroke-linecap: round;
 }
 
+/* Override React Flow's default selected outline so our custom selected style is the only one */
+.mfx-canvas .react-flow__node.selected,
+.mfx-canvas .react-flow__node:focus,
+.mfx-canvas .react-flow__node:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 /* ── n8n-Style Node ─────────────────────────── */
 
 .mfx-node {
@@ -1375,10 +1383,14 @@ textarea.input {
 }
 
 .mfx-node--selected {
-  border-color: rgba(132, 204, 255, 0.5) !important;
+  border-color: #3b82f6 !important;
   box-shadow:
     0 4px 20px rgba(0, 0, 0, 0.45),
-    0 0 0 2px rgba(132, 204, 255, 0.2) !important;
+    0 0 0 3px rgba(59, 130, 246, 0.35) !important;
+}
+
+.mfx-node--selected .mfx-node__icon-badge {
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
 }
 
 .mfx-node__color-strip {
@@ -1466,8 +1478,8 @@ textarea.input {
 /* ── n8n-Style Handles ──────────────────────── */
 
 .mfx-handle {
-  width: 16px !important;
-  height: 16px !important;
+  width: 12px !important;
+  height: 12px !important;
   border-radius: 50% !important;
   border: 2.5px solid rgba(132, 204, 255, 0.55) !important;
   background: #1e1e3a !important;
@@ -1479,23 +1491,35 @@ textarea.input {
 .mfx-handle::after {
   content: '';
   position: absolute;
-  inset: -6px;
+  top: -4px;
+  bottom: -4px;
+  width: 12px;
   border-radius: 50%;
+}
+
+.mfx-handle--target::after {
+  left: -6px;
+  right: 0;
+}
+
+.mfx-handle--source::after {
+  right: -6px;
+  left: 0;
 }
 
 .mfx-handle:hover {
   background: rgba(132, 204, 255, 0.4) !important;
   border-color: rgba(132, 204, 255, 1) !important;
-  transform: scale(1.25);
-  box-shadow: 0 0 12px rgba(132, 204, 255, 0.4);
+  transform: scale(1.2);
+  box-shadow: 0 0 10px rgba(132, 204, 255, 0.4);
 }
 
 .mfx-handle--target {
-  left: -8px !important;
+  left: -6px !important;
 }
 
 .mfx-handle--source {
-  right: -8px !important;
+  right: -6px !important;
 }
 
 .react-flow__handle.connecting {

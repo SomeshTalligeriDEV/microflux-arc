@@ -151,10 +151,11 @@ const nodeTypes: Record<string, React.FC<NodeProps<CanvasNodeData>>> = {
 
 const registeredNodeTypes = new Set(Object.keys(nodeTypes));
 
-const toFlowNode = (node: CanvasNodeData): Node<CanvasNodeData> => ({
+const toFlowNode = (node: CanvasNodeData, selectedId?: string | null): Node<CanvasNodeData> => ({
   id: node.id,
   type: registeredNodeTypes.has(node.type) ? node.type : 'microfluxNode',
   position: node.position,
+  selected: node.id === selectedId,
   data: node,
 });
 
@@ -339,12 +340,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     }
   }, [activeAddress, currentWorkflowId, edges, nodes, workflowName]);
 
-  const flowNodes = useMemo(() => nodes.map(toFlowNode), [nodes]);
+  const flowNodes = useMemo(() => nodes.map((n) => toFlowNode(n, selectedNodeId)), [nodes, selectedNodeId]);
   const flowEdges = useMemo(() => edges.map(toFlowEdge), [edges]);
 
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
     setNodes((currentNodes) => {
-      const flowResult = applyNodeChanges(changes, currentNodes.map(toFlowNode));
+      const flowResult = applyNodeChanges(changes, currentNodes.map((n) => toFlowNode(n)));
       return flowResult.map((flowNode) => {
         const existing = currentNodes.find((n) => n.id === flowNode.id);
         if (existing) {
@@ -1288,6 +1289,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           panOnDrag
           panOnScroll={false}
           selectionOnDrag={false}
+          selectNodesOnDrag={false}
           preventScrolling
           defaultEdgeOptions={{
             type: 'smoothstep',
