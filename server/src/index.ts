@@ -23,11 +23,11 @@ if (result.error) {
 
 
 const app: Express = express();
-const port = process.env.PORT || 8000;
+const port = process.env.PORT || 8080;
 
 app.use(cors({
   origin: ['http://localhost:5173', 'https://microflux-frontend.vercel.app'],
-  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   credentials: true
 }));
 app.use(express.json());
