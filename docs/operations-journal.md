@@ -37,3 +37,5 @@ This file tracks practical operational notes and deployment learnings.
 - Keep one-line curl snippets handy for health and CORS verification.
 
 - Use filesystem handling before catch-all route in Vercel SPA apps.
+
+- Reproduce CORS checks locally to confirm behavior before server redeploy.
