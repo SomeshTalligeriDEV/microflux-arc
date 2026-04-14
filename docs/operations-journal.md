@@ -35,3 +35,5 @@ This file tracks practical operational notes and deployment learnings.
 - Validate final alias/domain mapping right after production deployment.
 
 - Keep one-line curl snippets handy for health and CORS verification.
+
+- Use filesystem handling before catch-all route in Vercel SPA apps.
