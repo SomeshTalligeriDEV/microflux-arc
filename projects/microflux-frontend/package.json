@@ -43,8 +43,9 @@
   "scripts": {
     "generate:app-clients": "command -v algokit >/dev/null 2>&1 && algokit project link --all || echo 'AlgoKit CLI not found or failed; skipping project link'",
     "dev": "npm run generate:app-clients && vite",
-    "build": "npm run generate:app-clients && tsc && vite build",
-    "build:vercel": "tsc && vite build",
+    "build": "tsc && vite build",
+    "build:with-clients": "npm run generate:app-clients && tsc && vite build",
+    "build:vercel": "npm run build",
     "preview": "vite preview"
   },
   "eslintConfig": {
