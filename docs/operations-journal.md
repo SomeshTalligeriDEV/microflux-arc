@@ -11,3 +11,5 @@ This file tracks practical operational notes and deployment learnings.
 - Check SPA routing: static files must be served before fallback rewrite rules.
 
 - Standardize frontend API root variable as VITE_API_URL for clarity.
+
+- After frontend deploy, always test with hard refresh to bypass stale bundles.
