@@ -23,3 +23,5 @@ This file tracks practical operational notes and deployment learnings.
 - Keep rollback plan ready before applying aggressive config edits.
 
 - Vite env vars are build-time values; redeploy after env updates.
+
+- Prefer curl -I and concise probes for quick deployment diagnostics.
