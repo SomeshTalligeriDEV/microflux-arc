@@ -17,3 +17,5 @@ This file tracks practical operational notes and deployment learnings.
 - Validate Access-Control-Allow-Origin against expected production domains.
 
 - Suggested smoke order: health -> UI load -> API call -> deep link route.
+
+- Verify JS assets return application/javascript, not HTML fallback.
