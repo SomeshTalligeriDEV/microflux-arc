@@ -101,20 +101,24 @@ alwaysApply: false
    - **Direct** mode: three sequential payment signatures.
    - Expect three `[OK]` lines or one atomic group confirmation in the log.
 
-### T3.4 tpl_tinyman_swap_receiver
-- [ ] Filter condition is `==` (not `eq`)
-- [ ] Workflow doesn't break at filter step
+### T3.4 tpl_tinyman_swap (and receiver)
+- [ ] `toAssetId` / ASA `10458941` on Algorand **TestNet** (not mainnet `31566704`)
+- [ ] `tpl_tinyman_swap_receiver`: filter on `status === success` after swap; ASA transfer matches USDC id
 
 ### T3.5 tpl_scheduled_payment
-- [ ] Filter condition is `>=` (not `gte`)
-- [ ] Receiver is empty string (not `PAYEE_ADDRESS`)
+- [ ] `get_quote` + filter on field `price` (not `balance`, which was never set)
+- [ ] Demo payment `50000` microALGO; manual `wallet_event` trigger
 
 ### T3.6 tpl_price_alert
-- [ ] Filter condition is `>` (not `gt`)
-- [ ] After price_feed runs, filter can read `sharedContext.price`
+- [ ] `wallet_event` trigger; filter threshold `$0.05` so Execute usually passes
+- [ ] After `price_feed`, filter reads `sharedContext.price`
 
 ### T3.7 tpl_webhook_action
-- [ ] send_payment uses `amount` / `receiver` keys (not `amount_from` / `receiver_from`)
+- [ ] Demo payment `10000` microALGO; callback URL `https://httpbin.org/post`
+
+### T3.9 Remaining templates (batch 3)
+- [ ] **tpl_ai_trading_agent**: `get_quote` → filter `price > 0` → `debug_log` (no broken http/app chain)
+- [ ] **tpl_ai_defi_arbitrage**: linear `ai_trigger → price_feed → tinyman_swap → write_to_spreadsheet → telegram_notify`; swap uses `10458941`, 5 ALGO swap amount
 
 ### T3.8 Template Category Icons
 - [ ] Trading category shows icon (not empty string)

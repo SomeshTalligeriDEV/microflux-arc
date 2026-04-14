@@ -29,7 +29,7 @@ Unconnected nodes are appended at the end. Execution follows this order.
 2. **Atomic** — batches payments + ASA transfers into one atomic transaction group with workflow hash
 3. **Contract** — calls `WorkflowExecutor` smart contract with hashed workflow
 
-Toggle via "Use Smart Contract" checkbox in the builder UI.
+**Default mode:** **Contract** (`executionMode` initial state). User switches via the **Execution Mode** control (Direct / Atomic / Contract) in the Simulate panel.
 
 ## Adding a New Node Type
 
