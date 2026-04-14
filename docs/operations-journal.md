@@ -21,3 +21,5 @@ This file tracks practical operational notes and deployment learnings.
 - Verify JS assets return application/javascript, not HTML fallback.
 
 - Keep rollback plan ready before applying aggressive config edits.
+
+- Vite env vars are build-time values; redeploy after env updates.
