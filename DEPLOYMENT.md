@@ -88,7 +88,7 @@ Platforms may **spin down** idle web services. **HTTP requests from outside** wa
 
 Copy [`projects/microflux-frontend/.env.example`](projects/microflux-frontend/.env.example) and set:
 
-- `VITE_API_BASE_URL` — public API base ending in `/api`
+- `VITE_API_URL` — public API root (without `/api`)
 - `VITE_ALGOD_*` — TestNet algonode (see example)
 - `VITE_APP_ID` — deployed WorkflowExecutor app id (TestNet)
 
@@ -108,8 +108,7 @@ Deploy the `dist/` folder to Vercel, Netlify, Cloudflare Pages, or static hostin
 
 The API allows:
 
-- `http://localhost:5173`
-- `https://microflux-frontend.vercel.app`
+- `https://microflux.vercel.app`
 - Any extra origins in `CORS_ORIGINS`
 
 After deploying the app to a new origin, add it to `CORS_ORIGINS` and redeploy the API.
@@ -123,7 +122,7 @@ export API_HOST=https://your-api-host.example.com
 curl -sf "$API_HOST/health"
 ```
 
-Or use the helper script from repo root (defaults to `http://localhost:8080`):
+Or use the helper script from repo root (defaults to `https://microflux-arc.onrender.com`):
 
 ```bash
 API_HOST=https://your-api-host.example.com bash scripts/verify-deployment.sh

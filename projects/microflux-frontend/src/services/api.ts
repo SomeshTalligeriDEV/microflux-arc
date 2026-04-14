@@ -1,5 +1,6 @@
 // src/services/api.ts
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+const API_ROOT = (import.meta.env.VITE_API_URL || 'https://microflux-arc.onrender.com').replace(/\/+$/, '');
+const BASE_URL = `${API_ROOT}/api`;
 
 export interface Workflow {
   id: string;

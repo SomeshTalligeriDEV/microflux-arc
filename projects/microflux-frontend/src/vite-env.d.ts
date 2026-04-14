@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_ENVIRONMENT: string
+  readonly VITE_API_URL: string
 
   readonly VITE_ALGOD_TOKEN: string
   readonly VITE_ALGOD_SERVER: string

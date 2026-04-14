@@ -157,7 +157,7 @@ const isLikelyAlgorandAddress = (value: string): boolean => {
 };
 
 const getApproveBaseUrl = (): string => {
-  return (process.env.WEB_APP_URL || 'http://localhost:5173').replace(/\/+$/, '');
+  return (process.env.WEB_APP_URL || 'https://microflux.vercel.app').replace(/\/+$/, '');
 };
 
 const truncateAddress = (addr: string): string =>

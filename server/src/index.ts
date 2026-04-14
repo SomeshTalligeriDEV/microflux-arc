@@ -35,7 +35,7 @@ if (result.error) {
 
 /** Merge CORS_ORIGINS (comma-separated) with safe defaults for local + legacy Vercel app. */
 function getCorsOrigins(): string[] {
-  const defaults = ['http://localhost:5173', 'https://microflux-frontend.vercel.app'];
+  const defaults = ['https://microflux.vercel.app', 'https://microflux-frontend.vercel.app'];
   const extra = (process.env.CORS_ORIGINS || '')
     .split(',')
     .map((s) => s.trim())
@@ -206,5 +206,5 @@ pollTelegram();
 startWorkflowTimerScheduler();
 
 app.listen(port, () => {
-  console.log(`[server]: MicroFlux Engine is running at http://localhost:${port}`);
+  console.log(`[server]: MicroFlux Engine is running on port ${port}`);
 });
