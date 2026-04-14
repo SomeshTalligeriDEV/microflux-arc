@@ -29,3 +29,5 @@ This file tracks practical operational notes and deployment learnings.
 - White-screen path: inspect HTML script tag -> fetch JS asset -> verify type.
 
 - Require successful npm run build before shipping config changes.
+
+- Track non-blocking warnings separately from true deployment blockers.
