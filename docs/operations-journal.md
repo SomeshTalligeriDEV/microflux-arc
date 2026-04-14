@@ -51,3 +51,5 @@ This file tracks practical operational notes and deployment learnings.
 - Production validation matrix: availability, correctness, performance, recoverability.
 
 - Incident template should capture impact, root cause, fix, and prevention.
+
+- Day-end note: deployment checks passed and follow-up risks are tracked.
