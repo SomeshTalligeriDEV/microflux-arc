@@ -58,6 +58,11 @@ app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ status: 'active', message: 'MicroFlux Engine is running.' });
 });
 
+/** Minimal response for uptime monitors (Render, UptimeRobot, cron-job.org). Same process as /health. */
+app.get('/ping', (_req: Request, res: Response) => {
+  res.status(200).type('text/plain').send('ok');
+});
+
 //intent parsing route
 app.use('/api/intent', intentRoutes);
 

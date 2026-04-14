@@ -61,6 +61,29 @@ Run migrations against production `DATABASE_URL` before or as part of first boot
 
 The Dockerfile includes a **health check** against `GET /health`.
 
+### Render (or similar PaaS)
+
+[Render](https://render.com), [Fly.io](https://fly.io), and [DigitalOcean App Platform](https://www.digitalocean.com/products/app-platform) are common choices for a **long-lived Node** process (Telegram long polling). Pick based on pricing, regions, and whether the tier allows always-on processes.
+
+**Render — typical setup**
+
+1. New **Web Service**, connect the repo.
+2. **Root directory:** `server` (monorepo).
+3. **Build command:** `npm ci && npm run build`
+4. **Start command:** `npm start`
+5. **Pre-deploy command** (if shown in the dashboard): `npm run migrate:deploy` — runs migrations before each deploy. If your plan has no pre-deploy step, run `migrate:deploy` once against production `DATABASE_URL` from your machine, or add a guarded one-liner only after you understand duplicate-migrate risks.
+6. **Environment:** same variables as [§1](#1-environment-server). Set `PORT` only if the platform requires it (Render injects `PORT`).
+7. **Health check path:** `/health` (JSON) or `/ping` (plain text `ok`, minimal bytes).
+
+**Keep the service reachable (free / “sleepy” tiers)**
+
+Platforms may **spin down** idle web services. **HTTP requests from outside** wake the process again. A timer *inside* your app does **not** run while the instance is stopped, so use an **external** pinger:
+
+- [UptimeRobot](https://uptimerobot.com), [cron-job.org](https://cron-job.org), or another monitor: `GET` every **5–15 minutes** to `https://<your-service>.onrender.com/ping` (or `/health`).
+- Optional: use the repo workflow [`.github/workflows/render-keepalive.yml`](.github/workflows/render-keepalive.yml) and add a GitHub secret `RENDER_HEALTH_URL` with that full URL (e.g. `https://your-service.onrender.com/ping`). Runs on a schedule plus manual dispatch.
+
+**Caveat:** Waking the dyno reduces cold starts but does **not** guarantee Telegram long polling is as stable as on an always-on plan; for production traffic, prefer a non-sleeping tier or move Telegram to **webhooks** behind a stable URL.
+
 ## 4. Frontend (Vite)
 
 Copy [`projects/microflux-frontend/.env.example`](projects/microflux-frontend/.env.example) and set:
@@ -110,7 +133,7 @@ Manual smoke tests:
 
 | Step | Check |
 |------|--------|
-| Health | `GET /health` returns JSON `status: active` |
+| Health | `GET /health` returns JSON; `GET /ping` returns plain `ok` |
 | DB | Save a workflow in the UI |
 | Telegram | `/link` then a command |
 | Triggers | `POST /api/triggers/webhook` with `{ "path": "..." }` and `X-Microflux-Trigger-Secret` if set |
