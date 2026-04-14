@@ -13,3 +13,5 @@ This file tracks practical operational notes and deployment learnings.
 - Standardize frontend API root variable as VITE_API_URL for clarity.
 
 - After frontend deploy, always test with hard refresh to bypass stale bundles.
+
+- Validate Access-Control-Allow-Origin against expected production domains.
