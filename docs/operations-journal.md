@@ -39,3 +39,5 @@ This file tracks practical operational notes and deployment learnings.
 - Use filesystem handling before catch-all route in Vercel SPA apps.
 
 - Reproduce CORS checks locally to confirm behavior before server redeploy.
+
+- Test deep links directly (e.g. /approve/<token>) in production.
