@@ -22,7 +22,13 @@ import fs from 'fs';
 const envPath = path.resolve(process.cwd(), '.env');
 const result = dotenv.config({ path: envPath, override: true });
 if (result.error) {
-  console.error('[ENV] Failed to load .env:', result.error.message);
+  const missing = (result.error as NodeJS.ErrnoException).code === 'ENOENT';
+  if (missing) {
+    // No file is normal on Render/Fly/etc. — secrets come from the host env.
+    console.log('[ENV] No .env file — using process.env only');
+  } else {
+    console.error('[ENV] Failed to load .env:', result.error.message);
+  }
 } else {
   console.log('[ENV] Loaded', Object.keys(result.parsed || {}).length, 'variables from', envPath);
 }
