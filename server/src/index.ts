@@ -12,6 +12,7 @@ import executeRoutes from './routes/execute.routes';
 import notifyRoutes from './routes/notify.routes';
 import proxyRoutes from './routes/proxy.routes';
 import triggerRoutes from './routes/trigger.routes';
+import githubWebhooksRoutes from './routes/githubWebhooks.routes';
 import { startWorkflowTimerScheduler } from './core/triggers/timerScheduler';
 import { parseIntent as parseIntentFromAi } from './core/ai/intentParser';
 
@@ -204,6 +205,9 @@ app.use('/api/proxy', proxyRoutes);
 
 // Server-side workflow triggers (webhook path, timer, secured run-by-id)
 app.use('/api/triggers', triggerRoutes);
+
+// GitHub repository webhooks → workflow execution (sharedContext from JSON body)
+app.use('/api/webhooks', githubWebhooksRoutes);
 
 //agent routes
 app.use('/api/agent', agentRoutes);

@@ -211,7 +211,11 @@ export async function executeASATransfer(
   sharedContext: Record<string, unknown>,
 ): Promise<void> {
   const config = toConfig(node);
-  const receiver = normalizeAlgorandAddressInput(config.receiver);
+  const fromCtx = String(config.receiverFromContext ?? '').trim();
+  let receiver =
+    fromCtx === 'contributorWallet'
+      ? normalizeAlgorandAddressInput(sharedContext.contributorWallet)
+      : normalizeAlgorandAddressInput(config.receiver);
   const assetId = Number(config.asset_id ?? 0);
 
   let amount = Number(config.amount ?? 0);

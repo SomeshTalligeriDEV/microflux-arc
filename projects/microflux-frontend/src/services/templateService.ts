@@ -5,6 +5,7 @@
 
 import type { AINode, AIEdge } from './aiService';
 import defiStoplossVault from '../templates/defi_stoploss_template.json';
+import githubBountyGate from '../templates/github_bounty_template.json';
 
 // ── Types ────────────────────────────────────
 
@@ -307,6 +308,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
 
   // ── TRADING ─────────────────────────────────
   defiStoplossVault as unknown as WorkflowTemplate,
+  githubBountyGate as unknown as WorkflowTemplate,
   {
     id: 'tpl_price_alert',
     name: 'Price Alert Workflow',

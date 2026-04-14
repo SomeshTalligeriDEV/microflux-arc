@@ -14,6 +14,12 @@ import {
   executePriceFeed,
   executeTinymanSwap,
 } from './defiExecution';
+import {
+  evaluateGithubBountyGate,
+  executeAppCall,
+  executeDiscordNotify,
+  executeJsonParser,
+} from './githubBountyExecution';
 
 export type WorkflowNode = {
   id: string;
@@ -30,6 +36,8 @@ export type WorkflowEdge = {
 
 export type ExecutionContext = {
   triggerChatId?: string | number;
+  /** Merged into sharedContext before node execution (e.g. GitHub webhook payload). */
+  initialSharedContext?: Record<string, unknown>;
 };
 
 export type ExecutionResult = {
@@ -122,7 +130,14 @@ export const executeWorkflow = async (
 
   const txIds: string[] = [];
   const steps: string[] = [];
-  const sharedContext: Record<string, unknown> = { status: 'unknown', amount: 0, txId: '' };
+  const sharedContext: Record<string, unknown> = {
+    status: 'unknown',
+    amount: 0,
+    txId: '',
+    ...(context.initialSharedContext && typeof context.initialSharedContext === 'object'
+      ? context.initialSharedContext
+      : {}),
+  };
 
   const atomicPaymentIds = new Set<string>();
   for (const n of nodes) {
@@ -230,13 +245,41 @@ export const executeWorkflow = async (
     }
 
     if (nodeType === 'filter') {
-      const proceed = executeFilterCondition(node, sharedContext);
+      const preset = String(config.preset ?? '');
+      const proceed =
+        preset === 'github_bounty_merged'
+          ? evaluateGithubBountyGate(sharedContext)
+          : executeFilterCondition(node, sharedContext);
       if (!proceed) {
         steps.push(`[HALT] filter (${node.id}): condition false — workflow stopped`);
         sharedContext.status = 'halted';
         break;
       }
       steps.push(`[LOGIC] filter (${node.id}): condition true — proceeding`);
+      continue;
+    }
+
+    if (nodeType === 'json_parser') {
+      const parsed = await executeJsonParser(node, sharedContext);
+      if (!parsed.ok) {
+        steps.push(`[HALT] json_parser (${node.id}): no valid Algorand address in PR body`);
+        sharedContext.status = 'halted';
+        break;
+      }
+      steps.push(`[OK] json_parser (${node.id}): contributor wallet extracted`);
+      continue;
+    }
+
+    if (nodeType === 'app_call') {
+      try {
+        await executeAppCall(node, sharedContext);
+        const tid = String(sharedContext.appCallTxId ?? '');
+        if (tid) txIds.push(tid);
+        steps.push(`[OK] app_call (${node.id}): NoOp confirmed (${tid})`);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        steps.push(`[FAIL] app_call (${node.id}): ${msg}`);
+      }
       continue;
     }
 
@@ -291,7 +334,17 @@ export const executeWorkflow = async (
     }
 
     if (nodeType === 'discord_notify') {
-      steps.push(`[SKIP] discord_notify (${node.id}): mock only — use telegram_notify for real alerts`);
+      try {
+        await executeDiscordNotify(node, sharedContext);
+        if (sharedContext.discordSkipped) {
+          steps.push(`[SKIP] discord_notify (${node.id}): set https webhookUrl (Discord incoming webhook)`);
+        } else {
+          steps.push(`[OK] discord_notify (${node.id}): message sent`);
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        steps.push(`[FAIL] discord_notify (${node.id}): ${msg}`);
+      }
       continue;
     }
 

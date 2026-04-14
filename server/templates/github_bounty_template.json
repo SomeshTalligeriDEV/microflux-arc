@@ -1,0 +1,82 @@
+{
+  "id": "tpl_github_bounty_gate",
+  "name": "Agentic Commerce / GitHub Bounty Gate",
+  "description": "GitHub PR merged webhook → bounty label gate → parse Algorand address from PR body → on-chain app NoOp → USDC bounty payout → Discord. Configure GitHub to POST to POST {API}/api/webhooks/github/{WORKFLOW_ID} (same secret as other triggers). Replace registry app_id, Discord webhookUrl, TestNet USDC amount, and treasury mnemonic.",
+  "category": "automation",
+  "tags": ["github", "bounty", "discord", "enterprise", "asa"],
+  "difficulty": "advanced",
+  "estimatedGas": "0.01+ ALGO + ASA transfer",
+  "author": "MICROFLUX-X1",
+  "nodes": [
+    {
+      "id": "gh_trig",
+      "type": "webhook_trigger",
+      "label": "GitHub → MicroFlux",
+      "category": "trigger",
+      "config": {
+        "path": "/api/webhooks/github/{workflowId}",
+        "method": "POST"
+      },
+      "position": { "x": 40, "y": 260 }
+    },
+    {
+      "id": "gh_gate",
+      "type": "filter_condition",
+      "label": "Merged PR + bounty label",
+      "category": "logic",
+      "config": { "preset": "github_bounty_merged" },
+      "position": { "x": 300, "y": 260 }
+    },
+    {
+      "id": "gh_parse",
+      "type": "json_parser",
+      "label": "Parse wallet from PR body",
+      "category": "logic",
+      "config": {
+        "sourceField": "pr_body",
+        "errorDiscordWebhookUrl": "",
+        "errorMessageTemplate": "⚠️ Bounty halted: no valid Algorand address in PR #{{pr_number}}."
+      },
+      "position": { "x": 560, "y": 260 }
+    },
+    {
+      "id": "gh_registry",
+      "type": "app_call",
+      "label": "Contributor Registry (NoOp)",
+      "category": "action",
+      "config": { "app_id": 0, "method": "noop", "args": [] },
+      "position": { "x": 820, "y": 260 }
+    },
+    {
+      "id": "gh_pay",
+      "type": "asa_transfer",
+      "label": "Pay 50 USDC bounty",
+      "category": "action",
+      "config": {
+        "asset_id": 10458941,
+        "amount": 50000000,
+        "receiver": "",
+        "receiverFromContext": "contributorWallet"
+      },
+      "position": { "x": 1080, "y": 260 }
+    },
+    {
+      "id": "gh_discord",
+      "type": "discord_notify",
+      "label": "Discord: bounty paid",
+      "category": "notification",
+      "config": {
+        "webhookUrl": "",
+        "message": "🏆 Bounty paid! Sent 50 USDCa to developer for merging PR #{{pr_number}}."
+      },
+      "position": { "x": 1340, "y": 260 }
+    }
+  ],
+  "edges": [
+    { "id": "gb_e1", "source": "gh_trig", "target": "gh_gate" },
+    { "id": "gb_e2", "source": "gh_gate", "target": "gh_parse" },
+    { "id": "gb_e3", "source": "gh_parse", "target": "gh_registry" },
+    { "id": "gb_e4", "source": "gh_registry", "target": "gh_pay" },
+    { "id": "gb_e5", "source": "gh_pay", "target": "gh_discord" }
+  ]
+}

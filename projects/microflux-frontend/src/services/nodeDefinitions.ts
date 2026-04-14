@@ -182,6 +182,22 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     defaultConfig: { condition: '==', field: 'payment_status', value: 'success' },
   },
   {
+    type: 'json_parser',
+    label: 'JSON / Text Parser',
+    description:
+      'Server extracts a 58-character Algorand address from PR text (sharedContext.pr_body). Sets contributorWallet. On failure, halts and optionally POSTs errorDiscordWebhookUrl.',
+    category: 'logic',
+    icon: '{}',
+    isReal: true,
+    color: CATEGORY_COLORS.logic,
+    defaultConfig: {
+      sourceField: 'pr_body',
+      errorDiscordWebhookUrl: '',
+      errorMessageTemplate:
+        '⚠️ Bounty halted: no Algorand address in PR #{{pr_number}}. Add your 58-char TestNet address to the PR body.',
+    },
+  },
+  {
     type: 'debug_log',
     label: 'Debug Log',
     description: 'Log data to console',
@@ -249,12 +265,13 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   {
     type: 'discord_notify',
     label: 'Discord Notify',
-    description: 'Placeholder / simulation only — use Telegram Notify for real alerts.',
+    description:
+      'Server POST to a Discord incoming webhook URL (https://discord.com/api/webhooks/...). Message supports {{pr_number}}, {{contributorWallet}}, {{txId}}.',
     category: 'notification',
     icon: '#',
-    isReal: false,
+    isReal: true,
     color: CATEGORY_COLORS.notification,
-    defaultConfig: { channel: '', message: '' },
+    defaultConfig: { webhookUrl: '', message: '' },
   },
 ];
 

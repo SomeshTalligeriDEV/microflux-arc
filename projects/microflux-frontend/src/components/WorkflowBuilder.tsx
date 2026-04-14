@@ -653,7 +653,9 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           );
           break;
         case 'discord_notify':
-          logs.push(`[DISCORD] ${node.label}: Mock only — use Telegram Notify for real notifications`);
+          logs.push(
+            `[DISCORD] ${node.label}: Server POST to webhookUrl on Execute — ${String((node.config as any).webhookUrl || '(set incoming webhook URL)')}`,
+          );
           break;
         case 'tinyman_swap': {
           const fromId = Number(node.config.fromAssetId ?? 0);
@@ -939,6 +941,14 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         setExecutionLog([...logs]);
 
       } else if (node.type === 'filter' || node.type === 'filter_condition') {
+        const preset = String((node.config as { preset?: string }).preset ?? '');
+        if (preset === 'github_bounty_merged') {
+          logs.push(
+            `[LOGIC] ${node.label}: GitHub bounty gate (closed + merged + bounty label) — resolved on server with webhook payload`,
+          );
+          setExecutionLog([...logs]);
+          continue;
+        }
         const fieldName = String(node.config.field || 'payment_status');
         const condition = String(node.config.condition || '==');
         // Do not use || here: value 0 is valid for numeric filters (0 || 'success' was wrong).
@@ -985,6 +995,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           logs.push(`[LOGIC] Condition true — proceeding down primary path`);
           setExecutionLog([...logs]);
         }
+
+      } else if (node.type === 'json_parser') {
+        logs.push(
+          `[PARSER] ${node.label}: Server extracts first valid 58-char Algorand address from PR body (simulate only)`,
+        );
+        setExecutionLog([...logs]);
 
       } else if (node.type === 'browser_notification') {
         if (Notification.permission === 'granted') {
@@ -2109,9 +2125,52 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                     </div>
                   </>
                 )}
+                {selectedNode.type === 'discord_notify' && (
+                  <>
+                    <div style={{ marginBottom: '12px' }}>
+                      <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                        Discord incoming webhook URL (https://discord.com/api/webhooks/…)
+                      </label>
+                      <input
+                        className="input"
+                        placeholder="https://discord.com/api/webhooks/…"
+                        value={String((selectedNode.config as { webhookUrl?: string }).webhookUrl ?? '')}
+                        onChange={(e) => {
+                          setNodes((prev) =>
+                            prev.map((n) =>
+                              n.id === selectedNode.id
+                                ? { ...n, config: { ...n.config, webhookUrl: e.target.value } }
+                                : n
+                            )
+                          );
+                        }}
+                        style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                        Message (server: {'{{pr_number}}'}, {'{{contributorWallet}}'}, {'{{txId}}'})
+                      </label>
+                      <textarea
+                        className="input"
+                        rows={3}
+                        value={String((selectedNode.config as { message?: string }).message ?? '')}
+                        onChange={(e) => {
+                          setNodes((prev) =>
+                            prev.map((n) =>
+                              n.id === selectedNode.id
+                                ? { ...n, config: { ...n.config, message: e.target.value } }
+                                : n
+                            )
+                          );
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
                 {Object.entries(selectedNode.config)
                   .filter(([key]) =>
-                    !['receiver', 'amount', 'asset_id', 'app_id', 'method', 'args', 'fromAssetId', 'toAssetId', 'slippage', 'spreadsheetId', 'paymentNodeIds', 'useFiatConversion', 'fiatPayoutUsd', 'webhookUrl', 'message', 'auditWalletAddress', 'chatId'].includes(key),
+                    !['receiver', 'amount', 'asset_id', 'app_id', 'method', 'args', 'fromAssetId', 'toAssetId', 'slippage', 'spreadsheetId', 'paymentNodeIds', 'useFiatConversion', 'fiatPayoutUsd', 'webhookUrl', 'message', 'auditWalletAddress', 'chatId', 'preset', 'errorDiscordWebhookUrl', 'errorMessageTemplate', 'sourceField', 'receiverFromContext', 'url'].includes(key),
                   )
                   .map(([key, value]) => (
                     <div key={key} style={{ marginBottom: '10px' }}>
