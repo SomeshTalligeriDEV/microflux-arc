@@ -49,3 +49,5 @@ This file tracks practical operational notes and deployment learnings.
 - Keep commits scoped and readable; one concern per commit.
 
 - Production validation matrix: availability, correctness, performance, recoverability.
+
+- Incident template should capture impact, root cause, fix, and prevention.
