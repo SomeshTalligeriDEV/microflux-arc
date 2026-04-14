@@ -15,3 +15,5 @@ This file tracks practical operational notes and deployment learnings.
 - After frontend deploy, always test with hard refresh to bypass stale bundles.
 
 - Validate Access-Control-Allow-Origin against expected production domains.
+
+- Suggested smoke order: health -> UI load -> API call -> deep link route.
