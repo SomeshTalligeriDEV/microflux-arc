@@ -33,3 +33,5 @@ This file tracks practical operational notes and deployment learnings.
 - Track non-blocking warnings separately from true deployment blockers.
 
 - Validate final alias/domain mapping right after production deployment.
+
+- Keep one-line curl snippets handy for health and CORS verification.
