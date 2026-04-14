@@ -31,3 +31,5 @@ This file tracks practical operational notes and deployment learnings.
 - Require successful npm run build before shipping config changes.
 
 - Track non-blocking warnings separately from true deployment blockers.
+
+- Validate final alias/domain mapping right after production deployment.
