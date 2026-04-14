@@ -43,7 +43,8 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   {
     type: 'timer_loop',
     label: 'Timer Loop',
-    description: 'Trigger at set intervals',
+    description:
+      'Server runs saved workflows on this interval (ms). Requires workflow saved to DB + active. Uses MICROFLUX_TIMER_TICK_MS poll (default 30s).',
     category: 'trigger',
     icon: '◷',
     isReal: false,
@@ -53,7 +54,8 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   {
     type: 'wallet_event',
     label: 'Wallet Event',
-    description: 'Triggered by wallet activity',
+    description:
+      'Manual / external signal: POST /api/triggers/wallet-event/:workflowId with MICROFLUX_TRIGGER_SECRET (same as /run). On-chain monitoring not included.',
     category: 'trigger',
     icon: '◇',
     isReal: false,
@@ -63,7 +65,8 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   {
     type: 'webhook_trigger',
     label: 'Webhook Trigger',
-    description: 'HTTP endpoint trigger',
+    description:
+      'POST /api/triggers/webhook with JSON { path } matching this path (e.g. /api/trigger). Optional header X-Microflux-Trigger-Secret if MICROFLUX_TRIGGER_SECRET is set.',
     category: 'trigger',
     icon: '↗',
     isReal: false,
@@ -73,17 +76,19 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   {
     type: 'telegram_command',
     label: 'Telegram Command',
-    description: 'Trigger workflow from Telegram message',
+    description:
+      'Custom command (e.g. /myflow) after /link — must not collide with /start /link /help /workflows /status. Sends workflow result to Telegram.',
     category: 'trigger',
     icon: '✉',
     isReal: false,
     color: CATEGORY_COLORS.trigger,
-    defaultConfig: { command: '/start', chatId: '' },
+    defaultConfig: { command: '/myflow', chatId: '' },
   },
   {
     type: 'ai_trigger',
     label: 'AI Copilot Trigger',
-    description: 'Trigger workflow via LLM intent matching',
+    description:
+      'External hook: POST /api/triggers/ai/:workflowId (secured). LLM gating can be added later; today runs the saved graph.',
     category: 'trigger',
     icon: '✦',
     isReal: false,
@@ -135,12 +140,13 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   {
     type: 'write_to_spreadsheet',
     label: 'Write to Spreadsheet',
-    description: 'Log data directly to an Excel/CSV file',
+    description:
+      'Append a row via Google Sheets API. Paste your spreadsheet ID (from the URL). Share that sheet with the server service account email (Editor) — no Google login in MicroFlux required.',
     category: 'action',
     icon: '▤',
-    isReal: false,
+    isReal: true,
     color: CATEGORY_COLORS.action,
-    defaultConfig: { mapToColumns: true },
+    defaultConfig: { spreadsheetId: '', mapToColumns: true },
   },
 
   // ── LOGIC ───────────────────────────────────

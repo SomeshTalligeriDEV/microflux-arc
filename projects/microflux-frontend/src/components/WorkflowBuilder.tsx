@@ -622,7 +622,9 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           );
           break;
         case 'write_to_spreadsheet':
-          logs.push(`[SHEETS] ${node.label}: Writing to spreadsheet (mock)`);
+          logs.push(
+            `[SHEETS] ${node.label}: Would append row (${(node.config as any).spreadsheetId ? 'custom sheet id' : 'default GOOGLE_SHEET_ID'})`,
+          );
           break;
         case 'browser_notification':
           logs.push(`[NOTIFY] ${node.label}: Notification sent`);
@@ -812,14 +814,16 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         setExecutionLog([...logs]);
 
         try {
+          const sid = String((node.config as any).spreadsheetId ?? '').trim();
           const res = await fetch(`${apiBase}/sheets/write`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               walletAddress: activeAddress,
-              algoAmount: sharedContext.amount || 'N/A', 
+              algoAmount: sharedContext.amount || 'N/A',
               txId: sharedContext.txId || 'direct_execution_test',
-              status: sharedContext.status
+              status: sharedContext.status,
+              ...(sid ? { spreadsheetId: sid } : {}),
             })
           });
           if (res.ok) {
@@ -1185,11 +1189,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       if (hasAppCallNode) logs.push(`   ${getAppExplorerUrl(appId, networkName)}`);
 
       // Post-execution: check if the graph wanted to write to spreadsheet!
-      const hasSpreadsheetNode = nodes.some((n) => n.type === 'write_to_spreadsheet');
-      if (hasSpreadsheetNode) {
+      const sheetNode = nodes.find((n) => n.type === 'write_to_spreadsheet');
+      if (sheetNode) {
         logs.push(`[SHEETS] Writing successful atomic transaction to spreadsheet...`);
         setExecutionLog([...logs]);
         try {
+          const sid = String((sheetNode.config as any).spreadsheetId ?? '').trim();
           const res = await fetch(`${apiBase}/sheets/write`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1197,7 +1202,8 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
               walletAddress: activeAddress,
               algoAmount: payments.reduce((acc, p) => acc + p.amountMicroAlgos / 1000000, 0),
               txId: result.txId,
-              status: 'Success'
+              status: 'Success',
+              ...(sid ? { spreadsheetId: sid } : {}),
             })
           });
           if (res.ok) {
@@ -1908,8 +1914,37 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                     </div>
                   </>
                 )}
+                {selectedNode.type === 'write_to_spreadsheet' && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                      Spreadsheet ID (from URL /d/<b>…</b>/edit)
+                    </label>
+                    <input
+                      className="input"
+                      type="text"
+                      placeholder="Leave empty to use server GOOGLE_SHEET_ID"
+                      value={String((selectedNode.config as any).spreadsheetId ?? '')}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setNodes((prev) =>
+                          prev.map((n) =>
+                            n.id === selectedNode.id
+                              ? { ...n, config: { ...n.config, spreadsheetId: v } }
+                              : n
+                          )
+                        );
+                      }}
+                      style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
+                    />
+                    <p className="text-xs text-muted" style={{ marginTop: '6px', fontSize: '0.55rem', lineHeight: 1.45 }}>
+                      In Google Sheets: <strong>Share</strong> → add your MicroFlux <strong>service account</strong> email (from <code>GOOGLE_SERVICE_ACCOUNT_EMAIL</code> on the server) as <strong>Editor</strong>. No Google sign-in inside MicroFlux — sharing grants access.
+                    </p>
+                  </div>
+                )}
                 {Object.entries(selectedNode.config)
-                  .filter(([key]) => !['receiver', 'amount', 'asset_id', 'app_id', 'method', 'args', 'fromAssetId', 'toAssetId', 'slippage'].includes(key))
+                  .filter(([key]) =>
+                    !['receiver', 'amount', 'asset_id', 'app_id', 'method', 'args', 'fromAssetId', 'toAssetId', 'slippage', 'spreadsheetId'].includes(key),
+                  )
                   .map(([key, value]) => (
                     <div key={key} style={{ marginBottom: '10px' }}>
                       <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>

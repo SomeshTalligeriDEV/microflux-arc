@@ -11,6 +11,8 @@ import agentRoutes from './routes/agent.routes';
 import executeRoutes from './routes/execute.routes';
 import notifyRoutes from './routes/notify.routes';
 import proxyRoutes from './routes/proxy.routes';
+import triggerRoutes from './routes/trigger.routes';
+import { startWorkflowTimerScheduler } from './core/triggers/timerScheduler';
 import { parseIntent as parseIntentFromAi } from './core/ai/intentParser';
 
 import path from 'path';
@@ -25,15 +27,31 @@ if (result.error) {
   console.log('[ENV] Loaded', Object.keys(result.parsed || {}).length, 'variables from', envPath);
 }
 
+/** Merge CORS_ORIGINS (comma-separated) with safe defaults for local + legacy Vercel app. */
+function getCorsOrigins(): string[] {
+  const defaults = ['http://localhost:5173', 'https://microflux-frontend.vercel.app'];
+  const extra = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return [...new Set([...defaults, ...extra])];
+}
 
 const app: Express = express();
 const port = process.env.PORT || 8080;
 
-app.use(cors({
-  origin: ['http://localhost:5173', 'https://microflux-frontend.vercel.app'],
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  credentials: true
-}));
+const corsOrigins = getCorsOrigins();
+if (process.env.CORS_ORIGINS) {
+  console.log('[CORS] Allowed origins:', corsOrigins.join(', '));
+}
+
+app.use(
+  cors({
+    origin: corsOrigins,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    credentials: true,
+  }),
+);
 app.use(express.json());
 
 app.get('/health', (req: Request, res: Response) => {
@@ -158,13 +176,23 @@ app.use('/api/execution', executionRoutes);
 app.use('/api/notify', notifyRoutes);
 app.use('/api/proxy', proxyRoutes);
 
+// Server-side workflow triggers (webhook path, timer, secured run-by-id)
+app.use('/api/triggers', triggerRoutes);
+
 //agent routes
 app.use('/api/agent', agentRoutes);
 
 //execute routes
 app.use('/api/execute', executeRoutes);
 
+if (!process.env.MICROFLUX_TRIGGER_SECRET) {
+  console.warn(
+    '[TRIGGERS] MICROFLUX_TRIGGER_SECRET is unset — /api/triggers/* accepts requests without auth (set secret in production).',
+  );
+}
+
 pollTelegram();
+startWorkflowTimerScheduler();
 
 app.listen(port, () => {
   console.log(`[server]: MicroFlux Engine is running at http://localhost:${port}`);

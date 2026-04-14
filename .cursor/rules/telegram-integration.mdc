@@ -39,7 +39,8 @@ MicroFlux uses **one Telegram bot** (`TELEGRAM_BOT_TOKEN`) for chat commands and
 | `/link CODE` | Link Telegram to wallet |
 | `/workflows` | List saved workflows as inline buttons |
 | `/status` | Show wallet + link status |
-| Other `/...` | Help message with available commands |
+| Custom `/...` | If a saved workflow has a `telegram_command` node whose `config.command` matches (e.g. `/myflow`), `tryExecuteTelegramCommandTrigger` runs `executeWorkflow` and replies with step output. |
+| Other `/...` (no match) | “Unknown command” (see `/help`) |
 
 ## Voice Messages
 

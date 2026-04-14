@@ -8,6 +8,7 @@ import { transcribeAudio } from '../services/sarvam.service';
 import { clearChatState, getChatState, setChatState } from '../core/state/chatState';
 import { setPendingExecution } from '../core/state/executionStore';
 import algosdk from 'algosdk';
+import { tryExecuteTelegramCommandTrigger } from '../core/triggers/triggerRunner';
 
 // ── Telegram helpers ─────────────────────────────────────────────────────────
 
@@ -727,6 +728,16 @@ export const handleTelegramUpdate = async (req: Request, res: Response) => {
     if (userText.toLowerCase() === '/status') {
       await handleStatusCommand(chatId);
       return res.sendStatus(200);
+    }
+
+    // ── Saved workflow: telegram_command node (custom /command) ─────────────────────
+    if (userText.startsWith('/')) {
+      const ran = await tryExecuteTelegramCommandTrigger(
+        linkedUser.walletAddress,
+        userText.trim(),
+        chatId,
+      );
+      if (ran) return res.sendStatus(200);
     }
 
     // ── Unknown slash command ─────────────────────

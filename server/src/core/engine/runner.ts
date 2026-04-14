@@ -2,24 +2,24 @@ import algosdk from 'algosdk';
 import { algoClient } from './algorand';
 import { sendTelegramMessage } from '../integrations/telegram';
 
-type WorkflowNode = {
+export type WorkflowNode = {
   id: string;
   type: string;
   position?: { x?: number; y?: number };
   config?: Record<string, unknown>;
 };
 
-type WorkflowEdge = {
+export type WorkflowEdge = {
   id?: string;
   source: string;
   target: string;
 };
 
-type ExecutionContext = {
+export type ExecutionContext = {
   triggerChatId?: string | number;
 };
 
-type ExecutionResult = {
+export type ExecutionResult = {
   success: boolean;
   message: string;
   txIds: string[];

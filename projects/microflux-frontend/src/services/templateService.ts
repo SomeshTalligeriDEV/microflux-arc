@@ -451,7 +451,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'write_to_spreadsheet',
         label: 'Log Execution to GS',
         category: 'action',
-        config: { mapToColumns: true },
+        config: { spreadsheetId: '', mapToColumns: true },
         position: { x: 950, y: 300 },
       },
       {

@@ -6,15 +6,38 @@ const router = Router();
 
 const HEADERS = ['Timestamp', 'Wallet Address', 'ALGO Amount', 'Transaction Hash', 'Status'];
 
-// Shared helper to get an authenticated sheet with headers guaranteed
-async function getSheet() {
-  const docId = process.env.GOOGLE_SHEET_ID || '';
+/** Google Sheet IDs are opaque strings from the /d/<id>/ URL; avoid path traversal. */
+function normalizeSpreadsheetId(raw: unknown): string | null {
+  if (raw === undefined || raw === null) return null;
+  const s = String(raw).trim();
+  if (s.length < 20 || s.length > 128) return null;
+  if (!/^[a-zA-Z0-9_-]+$/.test(s)) return null;
+  return s;
+}
+
+function resolveDocId(explicit?: string | null): string {
+  const fromRequest = normalizeSpreadsheetId(explicit);
+  const fromEnv = (process.env.GOOGLE_SHEET_ID || '').trim();
+  const docId = fromRequest || fromEnv;
+  if (!docId) {
+    throw new Error(
+      'No spreadsheet ID: paste Spreadsheet ID on the Write to Spreadsheet node, or set GOOGLE_SHEET_ID in server .env',
+    );
+  }
+  return docId;
+}
+
+// Shared helper: same service account JWT; target doc from node or env.
+async function getSheet(spreadsheetId?: string | null) {
+  const docId = resolveDocId(spreadsheetId);
   const serviceEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '';
   const rawKey = process.env.GOOGLE_PRIVATE_KEY || '';
   const privateKey = rawKey.replace(/\\n/g, '\n');
 
-  if (!docId || !serviceEmail || !privateKey) {
-    throw new Error(`Missing env vars. hasDocId=${!!docId} hasEmail=${!!serviceEmail} hasKey=${privateKey.length > 0}`);
+  if (!serviceEmail || !privateKey) {
+    throw new Error(
+      `Missing GOOGLE_SERVICE_ACCOUNT_EMAIL or GOOGLE_PRIVATE_KEY (service account auth)`,
+    );
   }
 
   const auth = new JWT({
@@ -41,10 +64,11 @@ async function getSheet() {
   return { doc, sheet };
 }
 
-// ── Test endpoint — open in browser: http://localhost:8080/api/sheets/test
-router.get('/test', async (_req: Request, res: Response) => {
+// ── Test endpoint — optional ?spreadsheetId=... (must be shared with service account)
+router.get('/test', async (req: Request, res: Response) => {
   try {
-    const { doc, sheet } = await getSheet();
+    const q = typeof req.query.spreadsheetId === 'string' ? req.query.spreadsheetId : undefined;
+    const { doc, sheet } = await getSheet(q);
     await sheet.addRow({
       'Timestamp': new Date().toISOString(),
       'Wallet Address': 'TEST_WALLET',
@@ -62,14 +86,14 @@ router.get('/test', async (_req: Request, res: Response) => {
 // ── Main write endpoint called by frontend after successful transaction
 router.post('/write', async (req: Request, res: Response) => {
   try {
-    const { walletAddress, algoAmount, txId, status } = req.body;
-    console.log('[SHEETS] Write request received:', { walletAddress, algoAmount, txId, status });
+    const { walletAddress, algoAmount, txId, status, spreadsheetId } = req.body;
+    console.log('[SHEETS] Write request received:', { walletAddress, algoAmount, txId, status, spreadsheetId: spreadsheetId ? '[set]' : '[env/default]' });
 
     if (!walletAddress || !txId) {
       return res.status(400).json({ error: 'Missing walletAddress or txId' });
     }
 
-    const { sheet } = await getSheet();
+    const { sheet } = await getSheet(spreadsheetId);
 
     await sheet.addRow({
       'Timestamp': new Date().toISOString(),
