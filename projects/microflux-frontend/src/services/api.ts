@@ -1,5 +1,10 @@
 // src/services/api.ts
-const API_ROOT = (import.meta.env.VITE_API_URL || 'https://microflux-arc.onrender.com').replace(/\/+$/, '');
+// Set VITE_API_URL (or VITE_API_BASE_URL) in .env.local — e.g. http://localhost:8080 or https://<api>.onrender.com. Defaults to local API if unset.
+const API_ROOT = (
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
+  'http://localhost:8080'
+).replace(/\/+$/, '');
 const BASE_URL = `${API_ROOT}/api`;
 
 export interface Workflow {

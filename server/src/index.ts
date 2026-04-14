@@ -49,9 +49,14 @@ if (rawSenderMn) {
   }
 }
 
-/** Merge CORS_ORIGINS (comma-separated) with safe defaults for local + legacy Vercel app. */
+/** Merge CORS_ORIGINS (comma-separated) with defaults for local dev + known production frontends. */
 function getCorsOrigins(): string[] {
-  const defaults = ['https://microflux.vercel.app', 'https://microflux-frontend.vercel.app'];
+  const defaults = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'https://microflux.vercel.app',
+    'https://microflux-frontend.vercel.app',
+  ];
   const extra = (process.env.CORS_ORIGINS || '')
     .split(',')
     .map((s) => s.trim())
@@ -59,21 +64,68 @@ function getCorsOrigins(): string[] {
   return [...new Set([...defaults, ...extra])];
 }
 
+/** Any http port on localhost / 127.0.0.1 (Vite, preview, alternate dev servers). */
+function isLocalDevOrigin(origin: string): boolean {
+  try {
+    const u = new URL(origin);
+    if (u.protocol !== 'http:') return false;
+    return u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
+/** Allow https://*.onrender.com when CORS_ALLOW_RENDER is not "0" (static site + API on Render). */
+function isOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) return true;
+  if (isLocalDevOrigin(origin)) return true;
+  if (getCorsOrigins().includes(origin)) return true;
+  if (process.env.CORS_ALLOW_RENDER === '0') return false;
+  try {
+    const u = new URL(origin);
+    return u.protocol === 'https:' && u.hostname.endsWith('.onrender.com');
+  } catch {
+    return false;
+  }
+}
+
 const app: Express = express();
 const port = process.env.PORT || 8080;
 
 const corsOrigins = getCorsOrigins();
-if (process.env.CORS_ORIGINS) {
-  console.log('[CORS] Allowed origins:', corsOrigins.join(', '));
-}
+console.log('[CORS] Explicit allowlist:', corsOrigins.join(', ') || '(none beyond dynamic Render rule)');
 
-app.use(
-  cors({
-    origin: corsOrigins,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    credentials: true,
-  }),
-);
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    if (isOriginAllowed(origin)) {
+      // Reflect exact Origin string (required when Access-Control-Allow-Credentials is true).
+      callback(null, origin);
+      return;
+    }
+    console.warn('[CORS] Blocked origin:', origin);
+    callback(null, false);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Microflux-Trigger-Secret'],
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+
+/** Ensure ACAO is always echoed for allowed origins (some proxies / cors edge cases omit it). */
+app.use((req, res, next) => {
+  const o = req.headers.origin;
+  if (o && typeof o === 'string' && isOriginAllowed(o)) {
+    res.setHeader('Access-Control-Allow-Origin', o);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+  next();
+});
 app.use(express.json());
 
 app.get('/health', (req: Request, res: Response) => {

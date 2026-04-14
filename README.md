@@ -27,6 +27,10 @@
 
 **Official Deployment:** [https://microflux-frontend.vercel.app](https://microflux-frontend.vercel.app)
 
+**Workflow QA:** Manual test steps for the DAO payroll, DeFi stop-loss, and GitHub bounty templates are in [docs/workflow-tests.md](./docs/workflow-tests.md).
+
+**CORS:** The API allows browser origins from local dev (`http://localhost:5173`), listed Vercel apps, `CORS_ORIGINS`, and (unless `CORS_ALLOW_RENDER=0`) any `https://*.onrender.com`. Configure `CORS_ORIGINS` on Render if the frontend uses a host outside those patterns (for example a custom domain).
+
 ---
 
 ## 💎 The Vision

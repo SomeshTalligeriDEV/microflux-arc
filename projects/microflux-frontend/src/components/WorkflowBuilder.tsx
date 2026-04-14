@@ -701,7 +701,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
 
     const sortedNodes = getExecutionOrder();
     const sharedContext: Record<string, any> = { status: 'unknown', amount: 0, txId: '' };
-    const apiBase = `${(import.meta.env.VITE_API_URL || 'https://microflux-arc.onrender.com').replace(/\/+$/, '')}/api`;
+    const apiBase = `${(import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080').replace(/\/+$/, '')}/api`;
     const skipSet = new Set<string>();
 
     for (const node of sortedNodes) {
@@ -1147,7 +1147,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   // MODE C: Atomic transaction group (payments + ASA + app call combined)
   const executeAtomic = useCallback(async (logs: string[]) => {
     if (!activeAddress || !transactionSigner) return;
-    const apiBase = `${(import.meta.env.VITE_API_URL || 'https://microflux-arc.onrender.com').replace(/\/+$/, '')}/api`;
+    const apiBase = `${(import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080').replace(/\/+$/, '')}/api`;
 
     const payments: Array<{ receiver: string; amountMicroAlgos: number }> = [];
     const asaTransfers: Array<{ receiver: string; assetId: number; amount: number }> = [];
