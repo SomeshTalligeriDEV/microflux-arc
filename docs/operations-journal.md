@@ -47,3 +47,5 @@ This file tracks practical operational notes and deployment learnings.
 - For low-risk updates, docs-only commits reduce accidental runtime impact.
 
 - Keep commits scoped and readable; one concern per commit.
+
+- Production validation matrix: availability, correctness, performance, recoverability.
