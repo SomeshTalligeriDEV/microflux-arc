@@ -70,7 +70,8 @@ export const TEMPLATES: WorkflowTemplate[] = [
   {
     id: 'tpl_asa_transfer',
     name: 'ASA Transfer',
-    description: 'Transfer Algorand Standard Assets with opt-in check and confirmation notification.',
+    description:
+      'Linear flow: manual trigger → transfer TestNet USDC (ASA 10458941). Set receiver and amount in Properties. Receiver must have opted in to the asset. Use Direct execute.',
     category: 'payments',
     tags: ['asa', 'transfer', 'token', 'real'],
     difficulty: 'intermediate',
@@ -87,10 +88,13 @@ export const TEMPLATES: WorkflowTemplate[] = [
       },
       {
         id: 'n2',
-        type: 'filter',
-        label: 'Check Opt-In',
+        type: 'debug_log',
+        label: 'Configure ASA transfer',
         category: 'logic',
-        config: { condition: '==', field: 'status', value: 'opted_in' },
+        config: {
+          message:
+            'Select ASA Transfer node: set receiver, asset_id (10458941 = TestNet USDC), amount in base units.',
+        },
         position: { x: 350, y: 200 },
       },
       {
@@ -98,8 +102,12 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'asa_transfer',
         label: 'Transfer ASA',
         category: 'action',
-        config: { asset_id: 0, amount: 100, receiver: '' },
-        position: { x: 620, y: 150 },
+        config: {
+          asset_id: 10458941,
+          amount: 1000000,
+          receiver: '',
+        },
+        position: { x: 620, y: 200 },
       },
       {
         id: 'n4',
@@ -107,22 +115,13 @@ export const TEMPLATES: WorkflowTemplate[] = [
         label: 'Notify: Success',
         category: 'notification',
         config: { title: 'ASA Transfer Complete', body: 'Tokens sent successfully' },
-        position: { x: 890, y: 150 },
-      },
-      {
-        id: 'n5',
-        type: 'debug_log',
-        label: 'Log: Not Opted In',
-        category: 'logic',
-        config: { message: 'Receiver has not opted in to asset' },
-        position: { x: 620, y: 300 },
+        position: { x: 890, y: 200 },
       },
     ],
     edges: [
       { id: 'e1', source: 'n1', target: 'n2' },
       { id: 'e2', source: 'n2', target: 'n3' },
-      { id: 'e3', source: 'n2', target: 'n5' },
-      { id: 'e4', source: 'n3', target: 'n4' },
+      { id: 'e3', source: 'n3', target: 'n4' },
     ],
   },
 
@@ -130,7 +129,8 @@ export const TEMPLATES: WorkflowTemplate[] = [
   {
     id: 'tpl_treasury_dist',
     name: 'Treasury Distribution',
-    description: 'Distribute funds from a treasury wallet to multiple recipients in a single workflow.',
+    description:
+      'Three ALGO payments (40% / 35% / 25% proportions, demo-sized for TestNet). Fill each receiver, then use Atomic mode for one signed group or Direct for sequential sends. Get ALGO Price logs a live quote first.',
     category: 'treasury',
     tags: ['treasury', 'distribution', 'multi-send', 'real'],
     difficulty: 'advanced',
@@ -158,7 +158,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'send_payment',
         label: 'Pay Team Lead (40%)',
         category: 'action',
-        config: { amount: 4000000, receiver: '' },
+        config: { amount: 40000, receiver: '' },
         position: { x: 650, y: 100 },
       },
       {
@@ -166,7 +166,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'send_payment',
         label: 'Pay Dev Fund (35%)',
         category: 'action',
-        config: { amount: 3500000, receiver: '' },
+        config: { amount: 35000, receiver: '' },
         position: { x: 650, y: 250 },
       },
       {
@@ -174,7 +174,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
         type: 'send_payment',
         label: 'Pay Reserve (25%)',
         category: 'action',
-        config: { amount: 2500000, receiver: '' },
+        config: { amount: 25000, receiver: '' },
         position: { x: 650, y: 400 },
       },
       {

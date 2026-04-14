@@ -71,12 +71,35 @@ alwaysApply: false
 - [ ] Simulation works; execution skips payment with "no receiver set" log
 
 ### T3.2 tpl_asa_transfer
-- [ ] `asset_id` field shows empty or placeholder (not hardcoded `0`)
-- [ ] User must fill in asset_id before execution succeeds
+- [ ] Linear graph (no filter): `wallet_event → debug_log → asa_transfer → browser_notification`
+- [ ] Default `asset_id` is `10458941` (TestNet USDC); user sets `receiver` and can adjust `amount`
+- [ ] Direct execute: ASA transfer signs only if receiver valid and wallet holds enough of that ASA
 
 ### T3.3 tpl_treasury_dist
-- [ ] All three payment receivers are empty strings (not `TEAM_LEAD_ADDRESS` etc.)
+- [ ] All three payment receivers are empty strings (user fills before execute)
+- [ ] Demo amounts: 40000 + 35000 + 25000 microALGO (0.1 ALGO total) — Atomic batches them in one group
 - [ ] Labels indicate role (Team Lead, Dev Fund, Reserve)
+
+## How to test: ASA Transfer (`tpl_asa_transfer`)
+
+1. Marketplace → **ASA Transfer** → Use template.
+2. **Simulate**: expect trigger, debug log message, ASA line with asset 10458941, notification (mock).
+3. **Execute (Direct)**:
+   - Fund TestNet wallet with ALGO (fees) and **TestNet USDC** for the transfer amount (get USDC from faucet/swap first).
+   - Opt in to ASA `10458941` on the **receiver** account if needed.
+   - Click **ASA Transfer** node → set **receiver** (58-char address), verify **asset_id** `10458941`, adjust **amount** (base units, e.g. `1000000` = 1 USDC with 6 decimals).
+   - Mode **Direct** → **EXECUTE WORKFLOW** → approve wallet → log shows `[OK]` and explorer link for ASA transfer.
+
+## How to test: Treasury Distribution (`tpl_treasury_dist`)
+
+1. Marketplace → **Treasury Distribution** → Use template.
+2. **Simulate**: wallet event, live `[PRICE]` from get_quote, three payment lines, notification.
+3. **Execute**:
+   - Fill **receiver** on each of the three `send_payment` nodes (can use three different addresses or your own for testing).
+   - Total outflow ≈ **0.1 ALGO** (40000 + 35000 + 25000 microALGO) plus fees.
+   - **Atomic** mode: one signature for the batched payment group (recommended for demo).
+   - **Direct** mode: three sequential payment signatures.
+   - Expect three `[OK]` lines or one atomic group confirmation in the log.
 
 ### T3.4 tpl_tinyman_swap_receiver
 - [ ] Filter condition is `==` (not `eq`)
