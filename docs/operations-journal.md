@@ -9,3 +9,5 @@ This file tracks practical operational notes and deployment learnings.
 - Confirm Render API availability with /health before debugging frontend behavior.
 
 - Check SPA routing: static files must be served before fallback rewrite rules.
+
+- Standardize frontend API root variable as VITE_API_URL for clarity.
