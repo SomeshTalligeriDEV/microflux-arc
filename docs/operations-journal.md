@@ -41,3 +41,5 @@ This file tracks practical operational notes and deployment learnings.
 - Reproduce CORS checks locally to confirm behavior before server redeploy.
 
 - Test deep links directly (e.g. /approve/<token>) in production.
+
+- Confirm new deploy hash and asset URLs to avoid cache confusion.
