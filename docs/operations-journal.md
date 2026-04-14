@@ -27,3 +27,5 @@ This file tracks practical operational notes and deployment learnings.
 - Prefer curl -I and concise probes for quick deployment diagnostics.
 
 - White-screen path: inspect HTML script tag -> fetch JS asset -> verify type.
+
+- Require successful npm run build before shipping config changes.
