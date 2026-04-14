@@ -35,6 +35,7 @@ import { sendPayment, sendAsaTransfer, getExplorerTxUrl, fetchAccountBalance } f
 import { microAlgosToAlgo, normalizeAmountToMicroAlgos } from '../utils/amount';
 import {
   callExecute,
+  callSetPublicExecution,
   hashWorkflow,
   getContractState,
   getAppId,
@@ -209,6 +210,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const [lastTxId, setLastTxId] = useState<string | null>(null);
   const [useSmartContract, setUseSmartContract] = useState(true);
   const [isDeploying, setIsDeploying] = useState(false);
+  const [isEnablingPublic, setIsEnablingPublic] = useState(false);
   const [deployedAppId, setDeployedAppId] = useState<number>(0);
   const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(workflowId ?? null);
   const [isSaving, setIsSaving] = useState(false);
@@ -615,7 +617,9 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           logs.push(`[APP] ${node.label}: App call prepared`);
           break;
         case 'http_request':
-          logs.push(`[HTTP] ${node.label}: HTTP request (mock)`);
+          logs.push(
+            `[HTTP] ${node.label}: ${String((node.config as any).method ?? 'GET')} ${(node.config as any).url || '(no URL)'} — Execute uses server HTTPS proxy`,
+          );
           break;
         case 'write_to_spreadsheet':
           logs.push(`[SHEETS] ${node.label}: Writing to spreadsheet (mock)`);
@@ -629,10 +633,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           }
           break;
         case 'telegram_notify':
-          logs.push(`[TELEGRAM] ${node.label}: Telegram (mock)`);
+          logs.push(
+            `[TELEGRAM] ${node.label}: ${String((node.config as any).message || '(no message)')} — Execute sends via bot (link wallet or set chatId)`,
+          );
           break;
         case 'discord_notify':
-          logs.push(`[DISCORD] ${node.label}: Discord (mock)`);
+          logs.push(`[DISCORD] ${node.label}: Mock only — use Telegram Notify for real notifications`);
           break;
         case 'tinyman_swap': {
           const fromId = Number(node.config.fromAssetId ?? 0);
@@ -828,11 +834,101 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         }
         setExecutionLog([...logs]);
 
+      } else if (node.type === 'telegram_notify') {
+        const message = String((node.config as any).message ?? '').trim();
+        const chatIdRaw = (node.config as any).chatId;
+        const chatId =
+          chatIdRaw !== undefined && chatIdRaw !== null && String(chatIdRaw).trim() !== ''
+            ? String(chatIdRaw).trim()
+            : undefined;
+
+        if (!message) {
+          logs.push(`[SKIP] ${node.label}: Set message text`);
+          setExecutionLog([...logs]);
+          continue;
+        }
+
+        logs.push(`[TELEGRAM] ${node.label}: Sending via bot...`);
+        setExecutionLog([...logs]);
+        try {
+          const body: Record<string, string> = { message };
+          if (chatId) body.chatId = chatId;
+          else body.walletAddress = activeAddress;
+
+          const res = await fetch(`${apiBase}/notify/telegram`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          if (res.ok) {
+            logs.push(`[OK] ${node.label}: Telegram message sent`);
+          } else {
+            let detail = '';
+            let hint = '';
+            try {
+              const j = await res.json() as { error?: string; hint?: string };
+              detail = j.error || JSON.stringify(j);
+              hint = j.hint || '';
+            } catch {
+              detail = await res.text();
+            }
+            logs.push(`[FAIL] ${node.label}: ${detail || res.statusText}`);
+            if (hint) logs.push(`   ${hint}`);
+          }
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Cannot reach server';
+          logs.push(`[FAIL] ${node.label}: ${msg}`);
+        }
+        setExecutionLog([...logs]);
+
+      } else if (node.type === 'http_request') {
+        const url = String((node.config as any).url ?? '').trim();
+        const method = String((node.config as any).method ?? 'GET').toUpperCase();
+        if (!url) {
+          logs.push(`[SKIP] ${node.label}: No URL configured`);
+          setExecutionLog([...logs]);
+          continue;
+        }
+        logs.push(`[HTTP] ${node.label}: ${method} via server proxy...`);
+        setExecutionLog([...logs]);
+        try {
+          const res = await fetch(`${apiBase}/proxy/http`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              url,
+              method,
+              headers: (node.config as any).headers ?? {},
+              body: (node.config as any).body,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data && typeof data === 'object' && 'ok' in data) {
+            const d = data as { ok?: boolean; status?: number; data?: unknown };
+            const tag = d.ok ? '[OK]' : '[FAIL]';
+            logs.push(`${tag} ${node.label}: HTTP ${d.status ?? '?'}`);
+            const preview =
+              typeof d.data === 'string'
+                ? d.data.slice(0, 200)
+                : JSON.stringify(d.data ?? '').slice(0, 200);
+            if (preview) logs.push(`   Response: ${preview}${preview.length >= 200 ? '…' : ''}`);
+          } else {
+            logs.push(`[FAIL] ${node.label}: ${(data as { error?: string }).error || res.statusText}`);
+          }
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Cannot reach server';
+          logs.push(`[FAIL] ${node.label}: ${msg}`);
+        }
+        setExecutionLog([...logs]);
+
       } else if (node.type === 'filter' || node.type === 'filter_condition') {
         const fieldName = String(node.config.field || 'payment_status');
         const condition = String(node.config.condition || '==');
-        const expectedValue = String(node.config.value || 'success');
-        
+        // Do not use || here: value 0 is valid for numeric filters (0 || 'success' was wrong).
+        const rawExpected = node.config.value;
+        const expectedValue =
+          rawExpected === undefined || rawExpected === null ? 'success' : String(rawExpected);
+
         logs.push(`[LOGIC] ${node.label}: Evaluating if ${fieldName} ${condition} "${expectedValue}"...`);
         setExecutionLog([...logs]);
 
@@ -947,7 +1043,18 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         setExecutionLog([...logs]);
 
       } else {
-        logs.push(`[SKIP] ${node.label}: Simulated (${node.isReal ? 'on-chain' : 'mock'})`);
+        const triggerTypes = new Set([
+          'wallet_event',
+          'webhook_trigger',
+          'timer_loop',
+          'telegram_command',
+          'ai_trigger',
+        ]);
+        if (triggerTypes.has(node.type)) {
+          logs.push(`[OK] ${node.label}: Trigger (no separate tx — downstream steps are on-chain when executed)`);
+        } else {
+          logs.push(`[SKIP] ${node.label}: Not executed in this mode (${node.isReal ? 'configure execution mode' : 'placeholder'})`);
+        }
         setExecutionLog([...logs]);
       }
     }
@@ -996,7 +1103,10 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         logs.push(`   Execution #${newState.totalExecutions}`);
       }
     } else {
-      logs.push(`[FAIL] Contract call failed: ${result.error}`);
+      logs.push('[FAIL] Contract call failed:');
+      for (const line of (result.error || '').split('\n')) {
+        if (line.trim()) logs.push(`   ${line}`);
+      }
     }
     setExecutionLog([...logs]);
   }, [nodes, activeAddress, transactionSigner, networkName]);
@@ -1125,8 +1235,13 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     logs.push(`Starting ${modeLabel} execution...`);
     logs.push(`Sender: ${activeAddress.slice(0, 8)}...${activeAddress.slice(-6)}`);
     logs.push(`Network: ${networkName} (Algorand Testnet)`);
-    logs.push(`Mode: ${modeLabel} • ${onChainCount} on-chain transactions`);
-    logs.push('');
+    if (executionMode === 'contract') {
+      logs.push(`Mode: CONTRACT — wallet L1 txs + off-chain notifications, then WorkflowExecutor execute() for on-chain record`);
+      logs.push(`   (Telegram / HTTP / sheets stay off-chain; payments & swaps are signed on-chain first)`);
+    } else {
+      logs.push(`Mode: ${modeLabel} • ${onChainCount} on-chain-capable nodes`);
+    }
+  logs.push('');
     setExecutionLog([...logs]);
 
     try {
@@ -1135,6 +1250,10 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           await executeDirect(logs);
           break;
         case 'contract':
+          await executeDirect(logs);
+          logs.push('');
+          logs.push('───────── WorkflowExecutor — on-chain execution record ─────────');
+          setExecutionLog([...logs]);
           await executeViaContract(logs);
           break;
         case 'atomic':
@@ -1142,9 +1261,23 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           break;
       }
 
-      // Check if any TX was confirmed (look for OK markers)
-      const hasSuccess = logs.some(l => l.includes('[OK]'));
-      const txLine = logs.find(l => l.trim().startsWith('TX:'));
+      // Success: Direct/Atomic = any [OK]. Contract = WorkflowExecutor must confirm (on-chain record).
+      const anyOk = logs.some((l) => l.includes('[OK]'));
+      const contractConfirmed = logs.some((l) => l.includes('Contract execution confirmed'));
+      const contractFailed =
+        executionMode === 'contract' &&
+        logs.some((l) => l.includes('Contract call failed') || l.includes('Contract call failed:'));
+      const hasSuccess =
+        executionMode === 'contract' ? contractConfirmed : anyOk;
+
+      if (executionMode === 'contract' && anyOk && contractFailed) {
+        logs.push('');
+        logs.push(
+          '[WARN] Some steps succeeded, but WorkflowExecutor execute() failed — L1 txs may still have gone through. Fix creator-only mode (enable public execution) or check App ID.',
+        );
+      }
+
+      const txLine = logs.find((l) => l.trim().startsWith('TX:'));
       if (hasSuccess) {
         setExecutionSuccess(true);
         if (txLine) setLastTxId(txLine.replace(/.*TX:\s*/, '').trim());
@@ -1154,9 +1287,13 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       if (hasSuccess) {
         logs.push('═══════════════════════════════');
         logs.push('EXECUTION SUCCESSFUL');
-        logs.push('All transactions confirmed on Algorand Testnet.');
-        logs.push('No data is mocked. Every action was signed');
-        logs.push('by your wallet and confirmed on-chain.');
+        if (executionMode === 'contract') {
+          logs.push('L1 transactions (if any) and WorkflowExecutor record confirmed on Algorand Testnet.');
+        } else {
+          logs.push('All transactions confirmed on Algorand Testnet.');
+          logs.push('No data is mocked. Every action was signed');
+          logs.push('by your wallet and confirmed on-chain.');
+        }
         logs.push('═══════════════════════════════');
       } else {
         logs.push(`───── ${modeLabel} EXECUTION COMPLETE ─────`);
@@ -1258,6 +1395,31 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     }
     setIsDeploying(false);
   }, [activeAddress, transactionSigner]);
+
+  const enablePublicExecutionHandler = useCallback(async () => {
+    if (!activeAddress || !transactionSigner) return;
+    const appId = getAppId() || deployedAppId;
+    if (!appId) return;
+    setIsEnablingPublic(true);
+    try {
+      const result = await callSetPublicExecution(
+        activeAddress,
+        true,
+        transactionSigner as any,
+        appId,
+      );
+      if (result.success) {
+        const state = await getContractState(appId);
+        if (state) setContractState(state);
+        alert('Public execution enabled. Any wallet can now record executions on-chain via execute().');
+      } else {
+        alert(`Failed: ${result.error}`);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Unknown error');
+    }
+    setIsEnablingPublic(false);
+  }, [activeAddress, transactionSigner, deployedAppId]);
 
   return (
     <div className="workspace-layout">
@@ -1861,9 +2023,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                 ))}
               </div>
               <div className="text-xs text-muted" style={{ fontSize: '0.55rem', marginTop: '4px' }}>
-                {executionMode === 'direct' && 'Sequential L1 transactions signed individually'}
-                {executionMode === 'atomic' && 'Atomic group — all-or-nothing batch execution'}
-                {executionMode === 'contract' && 'Execute via WorkflowExecutor smart contract'}
+                {executionMode === 'direct' &&
+                  'Payments & swaps: real on-chain L1 txs, signed one-by-one. Best for Telegram + payments.'}
+                {executionMode === 'atomic' &&
+                  'Atomic group — all-or-nothing; L1 txs + optional app call in one batch.'}
+                {executionMode === 'contract' &&
+                  'Runs payments/swaps as real L1 txs, sends Telegram/API off-chain, then calls WorkflowExecutor execute() so the run shows on-chain.'}
               </div>
             </div>
             <div className="sim-panel" style={{ marginBottom: '12px' }}>
@@ -1885,6 +2050,35 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
               )}
               <div className="sim-row"><span className="sim-label">Total Executions</span><span className="sim-value" style={{ fontWeight: 700, color: 'var(--color-success)' }}>{contractState?.totalExecutions ?? '—'}</span></div>
               <div className="sim-row"><span className="sim-label">Workflows Registered</span><span className="sim-value">{contractState?.workflowCount ?? '—'}</span></div>
+              <div className="sim-row">
+                <span className="sim-label">Public execute</span>
+                <span className="sim-value" style={{ fontWeight: 600, color: contractState?.publicExecution ? 'var(--color-success)' : 'var(--color-warning)' }}>
+                  {contractState ? (contractState.publicExecution ? 'On' : 'Off (creator only)') : '—'}
+                </span>
+              </div>
+              {contractState?.creator && (
+                <div className="sim-row">
+                  <span className="sim-label">Creator</span>
+                  <span className="sim-value" style={{ fontSize: '0.6rem' }} title={contractState.creator}>
+                    {contractState.creator.slice(0, 6)}…{contractState.creator.slice(-4)}
+                  </span>
+                </div>
+              )}
+              {(getAppId() > 0 || deployedAppId > 0) &&
+                contractState &&
+                !contractState.publicExecution &&
+                activeAddress &&
+                contractState.creator === activeAddress && (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm w-full"
+                    onClick={enablePublicExecutionHandler}
+                    disabled={isEnablingPublic}
+                    style={{ marginTop: '6px', marginBottom: '4px', fontSize: '0.6rem' }}
+                  >
+                    {isEnablingPublic ? 'ENABLING…' : 'ENABLE PUBLIC EXECUTION'}
+                  </button>
+                )}
               <div className="sim-row">
                 <span className="sim-label">Status</span>
                 <span className="sim-value">

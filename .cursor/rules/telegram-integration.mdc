@@ -19,6 +19,18 @@ alwaysApply: false
 3. User sends natural language in Telegram → `parseIntent()` → build or execute workflow
 4. Execute path → approval link sent → user signs in frontend → confirmation sent back to Telegram
 
+## Workflow notifications (`telegram_notify`)
+
+MicroFlux uses **one Telegram bot** (`TELEGRAM_BOT_TOKEN`) for chat commands and for workflow alerts.
+
+| Path | How the recipient is chosen |
+|------|------------------------------|
+| **Linked wallet** | Leave `chatId` empty on the node; Direct execution sends `{ walletAddress, message }` to `POST /api/notify/telegram`, which looks up `User.telegramId` after `/link CODE`. |
+| **Explicit chat** | Set `config.chatId` (numeric string from Telegram) on the node; same endpoint receives `{ chatId, message }`. |
+| **Runner / Telegram-triggered flows** | `server/src/core/engine/runner.ts` uses `config.chatId` or `triggerChatId` from context and calls `sendTelegramMessage` directly. |
+
+**Payload:** Plain text; `sendTelegramMessage` tries Markdown then retries plain if parsing fails. **Not** used for Discord (that node is mock-only in the UI).
+
 ## Commands
 
 | Command | Behavior |

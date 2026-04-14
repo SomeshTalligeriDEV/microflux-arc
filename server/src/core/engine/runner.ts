@@ -48,6 +48,20 @@ const normalizeNodeType = (type: string): string => {
   return type;
 };
 
+function isAllowedProxyUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'https:') return false;
+    const h = u.hostname.toLowerCase();
+    if (h === 'localhost' || h === '127.0.0.1' || h.startsWith('192.168.') || h.startsWith('10.')) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function topologicalSort(nodes: WorkflowNode[], edges: WorkflowEdge[]): WorkflowNode[] {
   const inDegree = new Map<string, number>();
   const adjList = new Map<string, string[]>();
@@ -224,19 +238,44 @@ export const executeWorkflow = async (
     }
 
     if (nodeType === 'http_request') {
-      const url = String(config.url ?? '');
+      const url = String(config.url ?? '').trim();
       const method = String(config.method ?? 'GET').toUpperCase();
-      if (url && url.startsWith('http')) {
-        try {
-          const resp = await fetch(url, { method, signal: AbortSignal.timeout(10_000) });
-          steps.push(`[OK] http_request (${node.id}): ${method} ${url} → ${resp.status}`);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : 'fetch failed';
-          steps.push(`[FAIL] http_request (${node.id}): ${msg}`);
-        }
-      } else {
-        steps.push(`[SKIP] http_request (${node.id}): invalid URL`);
+      if (!url || !isAllowedProxyUrl(url)) {
+        steps.push(`[SKIP] http_request (${node.id}): valid https URL required (private hosts blocked)`);
+        continue;
       }
+      try {
+        const headerObj: Record<string, string> = {
+          Accept: 'application/json, text/plain, */*',
+        };
+        const hdrs = config.headers;
+        if (hdrs && typeof hdrs === 'object' && !Array.isArray(hdrs)) {
+          for (const [k, v] of Object.entries(hdrs as Record<string, unknown>)) {
+            headerObj[k] = String(v);
+          }
+        }
+        const init: RequestInit = {
+          method,
+          headers: headerObj,
+          signal: AbortSignal.timeout(20_000),
+        };
+        if (method !== 'GET' && method !== 'HEAD' && config.body !== undefined) {
+          headerObj['Content-Type'] = headerObj['Content-Type'] ?? 'application/json';
+          init.body =
+            typeof config.body === 'string' ? config.body : JSON.stringify(config.body);
+        }
+        const resp = await fetch(url, init);
+        const text = await resp.text();
+        steps.push(`[OK] http_request (${node.id}): ${method} → ${resp.status} (${text.length}b)`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'fetch failed';
+        steps.push(`[FAIL] http_request (${node.id}): ${msg}`);
+      }
+      continue;
+    }
+
+    if (nodeType === 'discord_notify') {
+      steps.push(`[SKIP] discord_notify (${node.id}): mock only — use telegram_notify for real alerts`);
       continue;
     }
 
@@ -255,7 +294,7 @@ export const executeWorkflow = async (
       continue;
     }
 
-    if (['browser_notification', 'discord_notify', 'write_to_spreadsheet'].includes(nodeType)) {
+    if (['browser_notification', 'write_to_spreadsheet'].includes(nodeType)) {
       steps.push(`[SKIP] ${nodeType} (${node.id}): off-chain action — client only`);
       continue;
     }

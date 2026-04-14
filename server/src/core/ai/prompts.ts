@@ -19,6 +19,10 @@ When building a new workflow, you must use these exact Node Types:
 - DEFI: 'get_quote', 'price_feed', 'tinyman_swap'
 - NOTIFICATIONS: 'telegram_notify', 'browser_notification', 'discord_notify'
 
+- **Telegram (real):** 'telegram_notify' uses 'message' and optional 'chatId'. If 'chatId' is omitted, the user must have linked Telegram to their wallet via /link in the bot.
+- **Discord:** 'discord_notify' is simulation-only in the product; prefer 'telegram_notify' for real alerts.
+- http_request must use https:// URLs; the app calls them through the MicroFlux server (HTTPS proxy), not the browser.
+
 1. Each node must have: id, type, label, category, config, position.
 2. Space nodes horizontally (x increments of 300, e.g., x: 0, x: 300, x: 600). y is usually 100.
 3. Edges connect source node to target node (e.g., source: "node_1", target: "node_2").

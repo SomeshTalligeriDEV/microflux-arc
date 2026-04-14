@@ -27,7 +27,7 @@ Unconnected nodes are appended at the end. Execution follows this order.
 
 1. **Direct** — sequential node-by-node execution via wallet (`send_payment`, `asa_transfer`, etc.)
 2. **Atomic** — batches payments + ASA transfers into one atomic transaction group with workflow hash
-3. **Contract** — calls `WorkflowExecutor` smart contract with hashed workflow
+3. **Contract** — runs the **same Direct engine** first (L1 txs + off-chain Telegram/HTTP/sheets), then calls `WorkflowExecutor.execute(workflowHash)` so the run is recorded on-chain
 
 **Default mode:** **Contract** (`executionMode` initial state). User switches via the **Execution Mode** control (Direct / Atomic / Contract) in the Simulate panel.
 

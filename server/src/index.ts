@@ -9,6 +9,8 @@ import sheetsRoutes from './routes/sheets.routes';
 import executionRoutes from './routes/execution.routes';
 import agentRoutes from './routes/agent.routes';
 import executeRoutes from './routes/execute.routes';
+import notifyRoutes from './routes/notify.routes';
+import proxyRoutes from './routes/proxy.routes';
 import { parseIntent as parseIntentFromAi } from './core/ai/intentParser';
 
 import path from 'path';
@@ -151,6 +153,10 @@ app.use('/api/sheets', sheetsRoutes);
 
 //execution routes
 app.use('/api/execution', executionRoutes);
+
+// Discord webhook + HTTPS proxy (workflow nodes)
+app.use('/api/notify', notifyRoutes);
+app.use('/api/proxy', proxyRoutes);
 
 //agent routes
 app.use('/api/agent', agentRoutes);

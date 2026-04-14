@@ -67,6 +67,17 @@ function encodeMethodSelector(methodSignature: string): Uint8Array {
   return algosdk.ABIMethod.fromSignature(methodSignature).getSelector()
 }
 
+/** When execute() reverts with assert, the app is usually in creator-only mode (public_execution = 0). */
+function explainContractExecuteFailure(message: string): string {
+  const lower = message.toLowerCase()
+  if (!lower.includes('logic eval') && !lower.includes('assert')) return message
+  return (
+    `${message}\n\n` +
+    `Hint: WorkflowExecutor only allows the app creator to call execute() until public execution is enabled. ` +
+    `Fix: connect the creator wallet, or (as creator) call set_public_execution(1) once — use “Enable public execution” in the builder sidebar if your wallet matches Creator.`
+  )
+}
+
 // ── Contract Calls ───────────────────────────
 
 /**
@@ -129,7 +140,54 @@ export async function callExecute(
     if (message.includes('cancelled') || message.includes('rejected') || message.includes('User refused')) {
       return { txId: '', appId: targetAppId, success: false, error: 'Transaction rejected by user' }
     }
-    return { txId: '', appId: targetAppId, success: false, error: message }
+    return { txId: '', appId: targetAppId, success: false, error: explainContractExecuteFailure(message) }
+  }
+}
+
+/**
+ * Creator-only: set public_execution so any wallet may call execute() (not just the deployer).
+ */
+export async function callSetPublicExecution(
+  senderAddress: string,
+  enabled: boolean,
+  signer: (txnGroup: algosdk.Transaction[], indexesToSign: number[]) => Promise<Uint8Array[]>,
+  appId?: number,
+): Promise<ContractCallResult> {
+  const targetAppId = appId || getAppId()
+  if (!targetAppId) {
+    return { txId: '', appId: 0, success: false, error: 'No App ID configured' }
+  }
+
+  try {
+    const algod = getAlgodClient()
+    const suggestedParams = await algod.getTransactionParams().do()
+
+    const methodSelector = encodeMethodSelector('set_public_execution(uint64)string')
+    const abiType = algosdk.ABIType.from('uint64')
+    const encodedFlag = abiType.encode(BigInt(enabled ? 1 : 0))
+
+    const txn = algosdk.makeApplicationCallTxnFromObject({
+      sender: senderAddress,
+      appIndex: targetAppId,
+      onComplete: algosdk.OnApplicationComplete.NoOpOC,
+      appArgs: [methodSelector, encodedFlag],
+      suggestedParams,
+    })
+
+    const signedTxns = await signer([txn], [0])
+    await algod.sendRawTransaction(signedTxns[0]).do()
+    const txId = txn.txID()
+    await algosdk.waitForConfirmation(algod, txId, 4)
+
+    console.log(`[MICROFLUX Contract] OK: set_public_execution(${enabled ? 1 : 0}) confirmed: ${txId}`)
+    return { txId, appId: targetAppId, success: true, returnValue: 'Public execution updated' }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'set_public_execution failed'
+    console.error('[MICROFLUX Contract] set_public_execution failed:', err)
+    if (message.includes('cancelled') || message.includes('rejected') || message.includes('User refused')) {
+      return { txId: '', appId: targetAppId, success: false, error: 'Transaction rejected by user' }
+    }
+    return { txId: '', appId: targetAppId, success: false, error: explainContractExecuteFailure(message) }
   }
 }
 
@@ -277,7 +335,7 @@ export async function executeAtomicGroup(
     if (message.includes('cancelled') || message.includes('rejected')) {
       return { txId: '', appId: 0, success: false, error: 'Transaction rejected by user' }
     }
-    return { txId: '', appId: 0, success: false, error: message }
+    return { txId: '', appId: 0, success: false, error: explainContractExecuteFailure(message) }
   }
 }
 
