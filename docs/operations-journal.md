@@ -45,3 +45,5 @@ This file tracks practical operational notes and deployment learnings.
 - Confirm new deploy hash and asset URLs to avoid cache confusion.
 
 - For low-risk updates, docs-only commits reduce accidental runtime impact.
+
+- Keep commits scoped and readable; one concern per commit.
