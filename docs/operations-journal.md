@@ -43,3 +43,5 @@ This file tracks practical operational notes and deployment learnings.
 - Test deep links directly (e.g. /approve/<token>) in production.
 
 - Confirm new deploy hash and asset URLs to avoid cache confusion.
+
+- For low-risk updates, docs-only commits reduce accidental runtime impact.
