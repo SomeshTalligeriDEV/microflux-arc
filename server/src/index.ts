@@ -33,6 +33,21 @@ if (result.error) {
   console.log('[ENV] Loaded', Object.keys(result.parsed || {}).length, 'variables from', envPath);
 }
 
+const rawSenderMn = process.env.ALGORAND_SENDER_MNEMONIC?.trim();
+if (rawSenderMn) {
+  const wc = rawSenderMn.split(/\s+/).filter(Boolean).length;
+  if (wc === 24) {
+    console.warn(
+      '[ENV] ALGORAND_SENDER_MNEMONIC has 24 words — algosdk server signing needs Algorand\'s 25-word passphrase. ' +
+        'Pera Universal 24-word phrases will not work. Use Pera Legacy Algo25 (25 words) or a wallet generated with algosdk/AlgoKit.',
+    );
+  } else if (wc !== 25) {
+    console.warn(
+      `[ENV] ALGORAND_SENDER_MNEMONIC parsed as ${wc} word(s) (expected 25 for Algorand). Unquoted lines break at spaces — use double quotes around all words.`,
+    );
+  }
+}
+
 /** Merge CORS_ORIGINS (comma-separated) with safe defaults for local + legacy Vercel app. */
 function getCorsOrigins(): string[] {
   const defaults = ['https://microflux.vercel.app', 'https://microflux-frontend.vercel.app'];

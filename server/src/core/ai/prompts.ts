@@ -20,7 +20,7 @@ When building a new workflow, you must use these exact Node Types:
 - NOTIFICATIONS: 'telegram_notify', 'browser_notification', 'discord_notify'
 
 - **Telegram (real):** 'telegram_notify' uses 'message' and optional 'chatId'. If 'chatId' is omitted, the user must have linked Telegram to their wallet via /link in the bot.
-- **Discord:** 'discord_notify' is simulation-only in the product; prefer 'telegram_notify' for real alerts.
+- **Discord:** 'discord_notify' is simulation-only; use 'telegram_notify' for real alerts.
 - http_request must use https:// URLs; the app calls them through the MicroFlux server (HTTPS proxy), not the browser.
 
 1. Each node must have: id, type, label, category, config, position.

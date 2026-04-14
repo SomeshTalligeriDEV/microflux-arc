@@ -1,5 +1,18 @@
 import algosdk from 'algosdk';
 
+/** Strip invisible / stray chars from pasted addresses (common cause of isValidAddress false). */
+export function normalizeAlgorandAddressInput(raw: unknown): string {
+  let s = String(raw ?? '').trim();
+  s = s.replace(/[\u200B-\u200D\uFEFF]/g, '');
+  // Zero-width joiners, word joiners, etc. (paste from PDF/slack can include these)
+  s = s.replace(/\p{Cf}/gu, '');
+  s = s.replace(/[\r\n\t]/g, '');
+  s = s.replace(/\s+/g, '');
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1);
+  }
+  return s.trim();
+}
 
 // Use a public TestNet node for the hackathon
 const ALGO_SERVER = "https://testnet-api.algonode.cloud";

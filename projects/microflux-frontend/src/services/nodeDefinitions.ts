@@ -151,6 +151,17 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
 
   // ── LOGIC ───────────────────────────────────
   {
+    type: 'atomic_group',
+    label: 'Atomic Group',
+    description:
+      'Server batches listed send_payment nodes into one atomic group (assignGroupID). List their node ids in paymentNodeIds. Use fiat on each send_payment with useFiatConversion + fiatPayoutUsd after price_feed.',
+    category: 'logic',
+    icon: '⎆',
+    isReal: true,
+    color: CATEGORY_COLORS.logic,
+    defaultConfig: { paymentNodeIds: [] },
+  },
+  {
     type: 'delay',
     label: 'Delay',
     description: 'Wait before next step',
@@ -228,7 +239,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     type: 'telegram_notify',
     label: 'Telegram Notify',
     description:
-      'Send a Telegram message via the MicroFlux bot. Leave chatId empty to use the wallet linked with /link in Telegram, or paste a numeric chat id.',
+      'Send a Telegram message via the MicroFlux bot. Leave chatId empty to use the wallet linked with /link in Telegram, or paste a numeric chat id. Server runs support {{txId}} and {{groupId}} in the message after on-chain steps.',
     category: 'notification',
     icon: '▶',
     isReal: true,
@@ -238,7 +249,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   {
     type: 'discord_notify',
     label: 'Discord Notify',
-    description: 'Placeholder / simulation only — real notifications use Telegram Notify',
+    description: 'Placeholder / simulation only — use Telegram Notify for real alerts.',
     category: 'notification',
     icon: '#',
     isReal: false,

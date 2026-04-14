@@ -23,6 +23,7 @@
     "@prisma/adapter-neon": "^7.7.0",
     "@prisma/adapter-pg": "^7.7.0",
     "@prisma/client": "^7.7.0",
+    "@tinymanorg/tinyman-js-sdk": "^5.1.4",
     "ai": "^6.0.156",
     "algosdk": "^3.5.2",
     "axios": "^1.15.0",

@@ -48,6 +48,19 @@ import {
 import AICopilotPanel from './AICopilotPanel';
 import algosdk from 'algosdk';
 import type { AINode, AIEdge } from '../services/aiService';
+
+/** Match server address cleanup so the receiver length hint matches webhook/server execution. */
+function normalizeAlgorandAddressForUi(raw: unknown): string {
+  let s = String(raw ?? '').trim();
+  s = s.replace(/[\u200B-\u200D\uFEFF]/g, '');
+  s = s.replace(/\p{Cf}/gu, '');
+  s = s.replace(/[\r\n\t]/g, '');
+  s = s.replace(/\s+/g, '');
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1);
+  }
+  return s.trim();
+}
 import { api } from '../services/api';
 import {
   executeSwap as executeTinymanSwap,
@@ -1680,6 +1693,23 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                       }}
                       style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}
                     />
+                    {selectedNode.type === 'send_payment' && (() => {
+                      const compact = normalizeAlgorandAddressForUi(selectedNode.config.receiver);
+                      if (!compact) return null;
+                      const len = compact.length;
+                      const ok = len === 58 && algosdk.isValidAddress(compact);
+                      return (
+                        <p className="text-xs text-muted" style={{ marginTop: '6px', lineHeight: 1.4 }}>
+                          {len}/58 characters
+                          {!ok && (
+                            <span>
+                              {' '}
+                              — {len < 58 ? 'Incomplete: copy the full public address from Defly (58 chars).' : 'Invalid Algorand address format.'}
+                            </span>
+                          )}
+                        </p>
+                      );
+                    })()}
                     {activeAddress && !String(selectedNode.config.receiver || '') && (
                       <button
                         className="btn btn-ghost btn-sm"
@@ -1696,6 +1726,54 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                       >
                         Use my address
                       </button>
+                    )}
+                  </div>
+                )}
+                {selectedNode.type === 'send_payment' && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <label className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean((selectedNode.config as any).useFiatConversion)}
+                        onChange={(e) => {
+                          const v = e.target.checked;
+                          setNodes((prev) =>
+                            prev.map((n) =>
+                              n.id === selectedNode.id
+                                ? { ...n, config: { ...n.config, useFiatConversion: v } }
+                                : n
+                            )
+                          );
+                        }}
+                      />
+                      <span style={{ fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                        Convert USD fiat → ALGO (server + price_feed)
+                      </span>
+                    </label>
+                    {Boolean((selectedNode.config as any).useFiatConversion) && (
+                      <div style={{ marginTop: '8px' }}>
+                        <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                          Payout (USD)
+                        </label>
+                        <input
+                          className="input"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="e.g. 100"
+                          value={String((selectedNode.config as any).fiatPayoutUsd ?? '')}
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? 0 : Number(e.target.value);
+                            setNodes((prev) =>
+                              prev.map((n) =>
+                                n.id === selectedNode.id
+                                  ? { ...n, config: { ...n.config, fiatPayoutUsd: val } }
+                                  : n
+                              )
+                            );
+                          }}
+                        />
+                      </div>
                     )}
                   </div>
                 )}
@@ -1765,7 +1843,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                     </div>
                   </>
                 )}
-                {('amount' in selectedNode.config) && (
+                {('amount' in selectedNode.config) && !(selectedNode.type === 'send_payment' && (selectedNode.config as any).useFiatConversion) && (
                   <div style={{ marginBottom: '12px' }}>
                     <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
                       {selectedNode.type === 'send_payment' ? 'Amount (microAlgos) *' : 'Amount *'}
@@ -1939,11 +2017,101 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
                     <p className="text-xs text-muted" style={{ marginTop: '6px', fontSize: '0.55rem', lineHeight: 1.45 }}>
                       In Google Sheets: <strong>Share</strong> → add your MicroFlux <strong>service account</strong> email (from <code>GOOGLE_SERVICE_ACCOUNT_EMAIL</code> on the server) as <strong>Editor</strong>. No Google sign-in inside MicroFlux — sharing grants access.
                     </p>
+                    <label className="text-xs" style={{ display: 'block', marginTop: '10px', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                      Audit wallet label (optional row column)
+                    </label>
+                    <input
+                      className="input"
+                      type="text"
+                      placeholder="DAO treasury / payroll run id"
+                      value={String((selectedNode.config as any).auditWalletAddress ?? '')}
+                      onChange={(e) => {
+                        setNodes((prev) =>
+                          prev.map((n) =>
+                            n.id === selectedNode.id
+                              ? { ...n, config: { ...n.config, auditWalletAddress: e.target.value } }
+                              : n
+                          )
+                        );
+                      }}
+                      style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}
+                    />
                   </div>
+                )}
+                {selectedNode.type === 'atomic_group' && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                      Payment node IDs (comma-separated)
+                    </label>
+                    <input
+                      className="input"
+                      placeholder="pay_a, pay_b, pay_c"
+                      value={Array.isArray((selectedNode.config as any).paymentNodeIds)
+                        ? (selectedNode.config as any).paymentNodeIds.join(', ')
+                        : String((selectedNode.config as any).paymentNodeIds ?? '')}
+                      onChange={(e) => {
+                        const ids = e.target.value
+                          .split(',')
+                          .map((s) => s.trim())
+                          .filter(Boolean);
+                        setNodes((prev) =>
+                          prev.map((n) =>
+                            n.id === selectedNode.id
+                              ? { ...n, config: { ...n.config, paymentNodeIds: ids } }
+                              : n
+                          )
+                        );
+                      }}
+                      style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}
+                    />
+                  </div>
+                )}
+                {selectedNode.type === 'telegram_notify' && (
+                  <>
+                    <div style={{ marginBottom: '12px' }}>
+                      <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                        Telegram chat ID (optional — leave empty if wallet is linked via /link)
+                      </label>
+                      <input
+                        className="input"
+                        placeholder="e.g. 123456789"
+                        value={String((selectedNode.config as any).chatId ?? '')}
+                        onChange={(e) => {
+                          setNodes((prev) =>
+                            prev.map((n) =>
+                              n.id === selectedNode.id
+                                ? { ...n, config: { ...n.config, chatId: e.target.value } }
+                                : n
+                            )
+                          );
+                        }}
+                        style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <label className="text-xs" style={{ display: 'block', marginBottom: '4px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                        Message (server: {'{{txId}}'}, {'{{groupId}}'} after atomic / payments)
+                      </label>
+                      <textarea
+                        className="input"
+                        rows={3}
+                        value={String((selectedNode.config as any).message ?? '')}
+                        onChange={(e) => {
+                          setNodes((prev) =>
+                            prev.map((n) =>
+                              n.id === selectedNode.id
+                                ? { ...n, config: { ...n.config, message: e.target.value } }
+                                : n
+                            )
+                          );
+                        }}
+                      />
+                    </div>
+                  </>
                 )}
                 {Object.entries(selectedNode.config)
                   .filter(([key]) =>
-                    !['receiver', 'amount', 'asset_id', 'app_id', 'method', 'args', 'fromAssetId', 'toAssetId', 'slippage', 'spreadsheetId'].includes(key),
+                    !['receiver', 'amount', 'asset_id', 'app_id', 'method', 'args', 'fromAssetId', 'toAssetId', 'slippage', 'spreadsheetId', 'paymentNodeIds', 'useFiatConversion', 'fiatPayoutUsd', 'webhookUrl', 'message', 'auditWalletAddress', 'chatId'].includes(key),
                   )
                   .map(([key, value]) => (
                     <div key={key} style={{ marginBottom: '10px' }}>

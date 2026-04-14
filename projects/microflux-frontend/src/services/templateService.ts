@@ -4,6 +4,7 @@
  */
 
 import type { AINode, AIEdge } from './aiService';
+import defiStoplossVault from '../templates/defi_stoploss_template.json';
 
 // ── Types ────────────────────────────────────
 
@@ -127,6 +128,113 @@ export const TEMPLATES: WorkflowTemplate[] = [
 
   // ── TREASURY ────────────────────────────────
   {
+    id: 'tpl_dao_atomic_payroll',
+    name: 'Atomic DAO Payroll & Compliance',
+    description:
+      'Pattern only — no real addresses baked in. After load: set each payee receiver, spreadsheet ID, Telegram chatId, and webhook path as you need. Host must set ALGORAND_SENDER_MNEMONIC (treasury that signs server-side txs) and Google/Telegram env. Trigger body path must match webhook_trigger.config.path.',
+    category: 'treasury',
+    tags: ['dao', 'payroll', 'atomic', 'compliance', 'webhook'],
+    difficulty: 'advanced',
+    estimatedGas: '0.003+ ALGO (3 payments + fees)',
+    author: 'MICROFLUX-X1',
+    nodes: [
+      {
+        id: 'trig_webhook',
+        type: 'webhook_trigger',
+        label: 'Payroll webhook',
+        category: 'trigger',
+        config: { path: '/dao/payroll-run', method: 'POST' },
+        position: { x: 40, y: 280 },
+      },
+      {
+        id: 'price_1',
+        type: 'price_feed',
+        label: 'ALGO / USD (CoinGecko)',
+        category: 'defi',
+        config: { token: 'ALGO', vs: 'USD' },
+        position: { x: 320, y: 280 },
+      },
+      {
+        id: 'pay_ops',
+        type: 'send_payment',
+        label: 'Ops — fiat USD',
+        category: 'action',
+        config: {
+          receiver: '',
+          useFiatConversion: true,
+          fiatPayoutUsd: 100,
+          amount: 0,
+        },
+        position: { x: 600, y: 120 },
+      },
+      {
+        id: 'pay_dev',
+        type: 'send_payment',
+        label: 'Dev — fiat USD',
+        category: 'action',
+        config: {
+          receiver: '',
+          useFiatConversion: true,
+          fiatPayoutUsd: 250,
+          amount: 0,
+        },
+        position: { x: 600, y: 280 },
+      },
+      {
+        id: 'pay_legal',
+        type: 'send_payment',
+        label: 'Legal — fiat USD',
+        category: 'action',
+        config: {
+          receiver: '',
+          useFiatConversion: true,
+          fiatPayoutUsd: 150,
+          amount: 0,
+        },
+        position: { x: 600, y: 440 },
+      },
+      {
+        id: 'atomic_batch',
+        type: 'atomic_group',
+        label: 'Atomic payroll batch',
+        category: 'logic',
+        config: { paymentNodeIds: ['pay_ops', 'pay_dev', 'pay_legal'] },
+        position: { x: 880, y: 280 },
+      },
+      {
+        id: 'sheet_log',
+        type: 'write_to_spreadsheet',
+        label: 'Compliance log',
+        category: 'action',
+        config: { spreadsheetId: '', mapToColumns: true, auditWalletAddress: '' },
+        position: { x: 1160, y: 280 },
+      },
+      {
+        id: 'telegram_ok',
+        type: 'telegram_notify',
+        label: 'Telegram: payroll done',
+        category: 'notification',
+        config: {
+          chatId: '',
+          message: 'DAO payroll atomic batch confirmed. Tx: {{txId}}',
+        },
+        position: { x: 1440, y: 280 },
+      },
+    ],
+    edges: [
+      { id: 'e0', source: 'trig_webhook', target: 'price_1' },
+      { id: 'e1', source: 'price_1', target: 'pay_ops' },
+      { id: 'e2', source: 'price_1', target: 'pay_dev' },
+      { id: 'e3', source: 'price_1', target: 'pay_legal' },
+      { id: 'e4', source: 'pay_ops', target: 'atomic_batch' },
+      { id: 'e5', source: 'pay_dev', target: 'atomic_batch' },
+      { id: 'e6', source: 'pay_legal', target: 'atomic_batch' },
+      { id: 'e7', source: 'atomic_batch', target: 'sheet_log' },
+      { id: 'e8', source: 'sheet_log', target: 'telegram_ok' },
+    ],
+  },
+
+  {
     id: 'tpl_treasury_dist',
     name: 'Treasury Distribution',
     description:
@@ -198,6 +306,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
   },
 
   // ── TRADING ─────────────────────────────────
+  defiStoplossVault as unknown as WorkflowTemplate,
   {
     id: 'tpl_price_alert',
     name: 'Price Alert Workflow',

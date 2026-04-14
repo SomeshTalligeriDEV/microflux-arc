@@ -1,6 +1,19 @@
 import algosdk from 'algosdk';
-import { algoClient } from './algorand';
+import { algoClient, normalizeAlgorandAddressInput } from './algorand';
 import { sendTelegramMessage } from '../integrations/telegram';
+import {
+  accountFromServerMnemonic,
+  executeAtomicPayments,
+  executeWriteToSpreadsheet,
+  expandWorkflowMessageTemplate,
+  resolvePaymentMicroAlgos,
+} from './deterministicPayroll';
+import {
+  executeASATransfer,
+  executeFilterCondition,
+  executePriceFeed,
+  executeTinymanSwap,
+} from './defiExecution';
 
 export type WorkflowNode = {
   id: string;
@@ -24,6 +37,8 @@ export type ExecutionResult = {
   message: string;
   txIds: string[];
   steps: string[];
+  /** Snapshot of last-run values (e.g. price, atomic group tx id) for API consumers */
+  sharedContext?: Record<string, unknown>;
 };
 
 const getServerMnemonic = (): string | null => {
@@ -96,26 +111,6 @@ function topologicalSort(nodes: WorkflowNode[], edges: WorkflowEdge[]): Workflow
   return ordered.map((id) => nodeMap.get(id)!).filter(Boolean);
 }
 
-function evaluateCondition(
-  condition: string,
-  actualValue: unknown,
-  expectedValue: unknown,
-): boolean {
-  const actual = String(actualValue ?? '');
-  const expected = String(expectedValue ?? '');
-  const numActual = Number(actualValue);
-  const numExpected = Number(expectedValue);
-  switch (condition) {
-    case '==': case 'eq':   return actual === expected;
-    case '!=': case 'neq':  return actual !== expected;
-    case '>':  case 'gt':   return numActual > numExpected;
-    case '>=': case 'gte':  return numActual >= numExpected;
-    case '<':  case 'lt':   return numActual < numExpected;
-    case '<=': case 'lte':  return numActual <= numExpected;
-    default: return false;
-  }
-}
-
 export const executeWorkflow = async (
   workflow: { nodes?: WorkflowNode[]; edges?: unknown[] },
   context: ExecutionContext = {},
@@ -128,7 +123,17 @@ export const executeWorkflow = async (
   const txIds: string[] = [];
   const steps: string[] = [];
   const sharedContext: Record<string, unknown> = { status: 'unknown', amount: 0, txId: '' };
-  const skipSet = new Set<string>();
+
+  const atomicPaymentIds = new Set<string>();
+  for (const n of nodes) {
+    const nt = normalizeNodeType(n.type);
+    if (nt !== 'atomic_group') continue;
+    const cfg = toConfig(n);
+    const raw = cfg.paymentNodeIds;
+    if (Array.isArray(raw)) {
+      for (const id of raw) atomicPaymentIds.add(String(id));
+    }
+  }
 
   console.log('[EXEC] Starting Workflow Execution...');
 
@@ -136,22 +141,24 @@ export const executeWorkflow = async (
     const nodeType = normalizeNodeType(node.type);
     const config = toConfig(node);
 
-    if (skipSet.has(node.id)) {
-      steps.push(`[SKIP] ${nodeType} (${node.id}): skipped by filter branch`);
-      continue;
-    }
-
     console.log(`[EXEC] Executing: ${nodeType} (${node.id})`);
 
     if (nodeType === 'send_payment') {
-      const receiver = String(config.receiver ?? '').trim();
-      const amount = Number(config.amount ?? 0);
-
-      if (!receiver || !algosdk.isValidAddress(receiver)) {
-        throw new Error(`Invalid receiver address for node ${node.id}`);
+      if (atomicPaymentIds.has(node.id)) {
+        steps.push(`[SKIP] send_payment (${node.id}): included in atomic_group batch`);
+        continue;
       }
-      if (!Number.isFinite(amount) || amount <= 0) {
-        throw new Error(`Invalid amount for node ${node.id}`);
+
+      const receiver = normalizeAlgorandAddressInput(config.receiver);
+      if (!receiver) {
+        throw new Error(
+          `send_payment ${node.id}: receiver is empty — set Receiver in the builder, Save, then retry.`,
+        );
+      }
+      if (!algosdk.isValidAddress(receiver)) {
+        throw new Error(
+          `send_payment ${node.id}: not a valid Algorand address (length ${receiver.length}, expected 58)`,
+        );
       }
 
       const mnemonic = getServerMnemonic();
@@ -159,12 +166,14 @@ export const executeWorkflow = async (
         throw new Error('Missing ALGORAND_SENDER_MNEMONIC (or ALGO_MNEMONIC / WALLET_MNEMONIC) in server .env');
       }
 
-      const sender = algosdk.mnemonicToSecretKey(mnemonic);
+      const microAmount = resolvePaymentMicroAlgos(config, sharedContext);
+      const sender = accountFromServerMnemonic(mnemonic);
+      sharedContext.senderAddress = String(sender.addr);
       const suggestedParams = await algoClient.getTransactionParams().do();
       const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
         sender: sender.addr,
         receiver,
-        amount: Math.trunc(amount),
+        amount: microAmount,
         suggestedParams,
       });
 
@@ -174,9 +183,23 @@ export const executeWorkflow = async (
 
       txIds.push(sendResult.txid);
       sharedContext.status = 'success';
-      sharedContext.amount = amount;
+      sharedContext.amount = microAmount;
       sharedContext.txId = sendResult.txid;
-      steps.push(`[OK] send_payment ${Math.trunc(amount)} microAlgos -> ${receiver} (${sendResult.txid})`);
+      steps.push(`[OK] send_payment ${microAmount} microAlgos -> ${receiver} (${sendResult.txid})`);
+      continue;
+    }
+
+    if (nodeType === 'atomic_group') {
+      const raw = config.paymentNodeIds;
+      const paymentNodeIds = Array.isArray(raw) ? raw.map((x) => String(x)) : [];
+      if (paymentNodeIds.length === 0) {
+        throw new Error(`atomic_group (${node.id}): paymentNodeIds must list send_payment node ids`);
+      }
+      const out = await executeAtomicPayments(nodes, paymentNodeIds, sharedContext);
+      for (const id of out.txIds) txIds.push(id);
+      steps.push(
+        `[OK] atomic_group (${node.id}): ${paymentNodeIds.length} txns, group ${out.groupId.slice(0, 16)}…`,
+      );
       continue;
     }
 
@@ -185,13 +208,14 @@ export const executeWorkflow = async (
         typeof config.chatId === 'string' || typeof config.chatId === 'number'
           ? config.chatId
           : context.triggerChatId;
-      const message = String(config.message ?? 'Workflow step completed');
+      const rawMessage = String(config.message ?? 'Workflow step completed');
+      const message = expandWorkflowMessageTemplate(rawMessage, sharedContext);
 
       if (targetChatId) {
         await sendTelegramMessage(targetChatId, message);
-        steps.push('[OK] telegram_notify message sent');
+        steps.push(`[OK] telegram_notify (${node.id}): message sent`);
       } else {
-        steps.push('[SKIP] telegram_notify missing chatId');
+        steps.push('[SKIP] telegram_notify missing chatId (use /link or set chatId on the node)');
       }
       continue;
     }
@@ -206,34 +230,26 @@ export const executeWorkflow = async (
     }
 
     if (nodeType === 'filter') {
-      const fieldName = String(config.field || 'payment_status');
-      const condition = String(config.condition || '==');
-      const expectedValue = config.value;
-      const actualValue = sharedContext[fieldName === 'payment_status' ? 'status' : fieldName];
-      const isTrue = evaluateCondition(condition, actualValue, expectedValue);
-
-      if (!isTrue) {
-        const downstream = new Set<string>();
-        const collect = (sourceId: string) => {
-          for (const e of edges) {
-            if (e.source === sourceId && !downstream.has(e.target)) {
-              downstream.add(e.target);
-              collect(e.target);
-            }
-          }
-        };
-        collect(node.id);
-        for (const id of downstream) skipSet.add(id);
-        steps.push(`[LOGIC] filter (${node.id}): condition false — skipping ${downstream.size} downstream node(s)`);
-      } else {
-        steps.push(`[LOGIC] filter (${node.id}): condition true — proceeding`);
+      const proceed = executeFilterCondition(node, sharedContext);
+      if (!proceed) {
+        steps.push(`[HALT] filter (${node.id}): condition false — workflow stopped`);
+        sharedContext.status = 'halted';
+        break;
       }
+      steps.push(`[LOGIC] filter (${node.id}): condition true — proceeding`);
       continue;
     }
 
     if (nodeType === 'get_quote' || nodeType === 'price_feed') {
-      sharedContext.price = 0;
-      steps.push(`[OK] ${nodeType} (${node.id}): price feed checked`);
+      if (nodeType === 'price_feed') {
+        await executePriceFeed(node, sharedContext);
+        steps.push(
+          `[OK] price_feed (${node.id}): ${sharedContext.priceToken}/${String(sharedContext.priceVs).toUpperCase()} = ${sharedContext.price}`,
+        );
+      } else {
+        sharedContext.price = 0;
+        steps.push(`[OK] get_quote (${node.id}): stub`);
+      }
       continue;
     }
 
@@ -280,7 +296,30 @@ export const executeWorkflow = async (
     }
 
     if (nodeType === 'tinyman_swap') {
-      steps.push(`[SKIP] tinyman_swap requires client-side wallet signing`);
+      await executeTinymanSwap(node, sharedContext);
+      const st = String(sharedContext.swapStatus ?? 'unknown');
+      if (st === 'success') {
+        const swapTx = String(sharedContext.swapTxId ?? '');
+        if (swapTx && swapTx !== 'SIMULATED') txIds.push(swapTx);
+        steps.push(
+          `[OK] tinyman_swap (${node.id}): ${st} tx=${swapTx} out≈${sharedContext.swapAmountOut}`,
+        );
+      } else {
+        steps.push(
+          `[FAIL] tinyman_swap (${node.id}): ${st} ${String(sharedContext.swapError ?? '')}`.trim(),
+        );
+      }
+      continue;
+    }
+
+    if (nodeType === 'asa_transfer') {
+      await executeASATransfer(node, sharedContext);
+      const asaId = String(sharedContext.asaTxId ?? '');
+      if (asaId) txIds.push(asaId);
+      const recv = normalizeAlgorandAddressInput(config.receiver);
+      steps.push(
+        `[OK] asa_transfer (${node.id}): ${sharedContext.asaAmount} units → ${recv.slice(0, 8)}… (${sharedContext.asaTxId})`,
+      );
       continue;
     }
 
@@ -294,8 +333,19 @@ export const executeWorkflow = async (
       continue;
     }
 
-    if (['browser_notification', 'write_to_spreadsheet'].includes(nodeType)) {
-      steps.push(`[SKIP] ${nodeType} (${node.id}): off-chain action — client only`);
+    if (nodeType === 'write_to_spreadsheet') {
+      try {
+        await executeWriteToSpreadsheet(config, sharedContext);
+        steps.push(`[OK] write_to_spreadsheet (${node.id}): row appended`);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        steps.push(`[FAIL] write_to_spreadsheet (${node.id}): ${msg}`);
+      }
+      continue;
+    }
+
+    if (nodeType === 'browser_notification') {
+      steps.push(`[SKIP] browser_notification (${node.id}): client only`);
       continue;
     }
 
@@ -307,5 +357,6 @@ export const executeWorkflow = async (
     message: `Workflow executed: ${steps.length} step(s), ${txIds.length} on-chain tx(s)`,
     txIds,
     steps,
+    sharedContext: { ...sharedContext },
   };
 };

@@ -1,0 +1,90 @@
+{
+  "id": "tpl_defi_stoploss_vault",
+  "name": "DeFi Stop-Loss & Cold Vault Sweeper",
+  "description": "Timer (5m) → ALGO/USD price → stop-loss filter (< $0.15) → Tinyman ALGO→TestNet USDC swap → success guard → sweep USDC to cold vault → Telegram alert. Set cold vault receiver, optional chatId, ALGORAND_SENDER_MNEMONIC on server, and tinyman_swap.simulate false for live Tinyman (simulate true uses a deterministic dry-run).",
+  "category": "trading",
+  "tags": ["defi", "stop-loss", "tinyman", "vault", "automated"],
+  "difficulty": "advanced",
+  "estimatedGas": "~0.02 ALGO + swap (TestNet)",
+  "author": "MICROFLUX-X1",
+  "nodes": [
+    {
+      "id": "sl_timer",
+      "type": "timer_loop",
+      "label": "Every 5 minutes",
+      "category": "trigger",
+      "config": { "interval": 300000 },
+      "position": { "x": 40, "y": 280 }
+    },
+    {
+      "id": "sl_price",
+      "type": "price_feed",
+      "label": "ALGO / USD (CoinGecko)",
+      "category": "defi",
+      "config": { "token": "ALGO", "vs": "usd" },
+      "position": { "x": 280, "y": 280 }
+    },
+    {
+      "id": "sl_filter_stop",
+      "type": "filter_condition",
+      "label": "Stop-loss: price < 0.15",
+      "category": "logic",
+      "config": { "field": "price", "condition": "lt", "value": 0.15 },
+      "position": { "x": 520, "y": 280 }
+    },
+    {
+      "id": "sl_swap",
+      "type": "tinyman_swap",
+      "label": "Swap 100 ALGO → USDC",
+      "category": "defi",
+      "config": {
+        "fromAssetId": 0,
+        "toAssetId": 10458941,
+        "amount": 100000000,
+        "slippage": 1,
+        "simulate": true
+      },
+      "position": { "x": 760, "y": 280 }
+    },
+    {
+      "id": "sl_filter_ok",
+      "type": "filter_condition",
+      "label": "Guard: swap succeeded",
+      "category": "logic",
+      "config": { "field": "swapStatus", "condition": "eq", "value": "success" },
+      "position": { "x": 1000, "y": 280 }
+    },
+    {
+      "id": "sl_vault",
+      "type": "asa_transfer",
+      "label": "Sweep USDC → cold vault",
+      "category": "action",
+      "config": {
+        "asset_id": 10458941,
+        "amount": 0,
+        "receiver": "",
+        "useLastSwapOutput": true
+      },
+      "position": { "x": 1240, "y": 280 }
+    },
+    {
+      "id": "sl_tg",
+      "type": "telegram_notify",
+      "label": "Telegram: dip secured",
+      "category": "notification",
+      "config": {
+        "chatId": "",
+        "message": "🚨 Market dip detected. Swapped ALGO to USDCa and secured in cold storage."
+      },
+      "position": { "x": 1480, "y": 280 }
+    }
+  ],
+  "edges": [
+    { "id": "e_sl_1", "source": "sl_timer", "target": "sl_price" },
+    { "id": "e_sl_2", "source": "sl_price", "target": "sl_filter_stop" },
+    { "id": "e_sl_3", "source": "sl_filter_stop", "target": "sl_swap" },
+    { "id": "e_sl_4", "source": "sl_swap", "target": "sl_filter_ok" },
+    { "id": "e_sl_5", "source": "sl_filter_ok", "target": "sl_vault" },
+    { "id": "e_sl_6", "source": "sl_vault", "target": "sl_tg" }
+  ]
+}
