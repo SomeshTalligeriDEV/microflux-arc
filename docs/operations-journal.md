@@ -25,3 +25,5 @@ This file tracks practical operational notes and deployment learnings.
 - Vite env vars are build-time values; redeploy after env updates.
 
 - Prefer curl -I and concise probes for quick deployment diagnostics.
+
+- White-screen path: inspect HTML script tag -> fetch JS asset -> verify type.
