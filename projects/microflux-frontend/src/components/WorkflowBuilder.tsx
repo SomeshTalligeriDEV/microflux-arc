@@ -964,7 +964,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         const expected = String(expectedValue);
         const numActual = Number(actualValue);
         const numExpected = Number(expectedValue);
-        
+
         let isTrue = false;
         switch (condition) {
           case '==': case 'eq':   isTrue = (actual === expected); break;
@@ -1246,7 +1246,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
           logs.push(`[FAIL] ${msg}`);
         }
       }
-      
+
       logs.push('');
       logs.push(`All ${txnCount} transactions executed atomically`);
     } else {

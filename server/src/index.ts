@@ -157,7 +157,7 @@ app.post('/api/ai/process', async (req: Request, res: Response) => {
   }
 });
 
-//telegram 
+//telegram
 const pollTelegram = async () => {
   let lastUpdateId = 0;
   let conflictSuppressed = false;

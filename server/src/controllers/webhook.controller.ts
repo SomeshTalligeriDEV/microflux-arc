@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { parseIntent } from '../core/ai/intentParser';
 import { sendTelegramMessage } from '../core/integrations/telegram';
-import { prisma } from '../exports/prisma'; 
+import { prisma } from '../exports/prisma';
 import { resolveNFD } from '../core/integrations/algorand/nfd';
 import { Prisma } from '@prisma/client';
 import { transcribeAudio } from '../services/sarvam.service';
